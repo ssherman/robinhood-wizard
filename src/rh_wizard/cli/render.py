@@ -68,3 +68,31 @@ def render_positions(state) -> str:
     )
     body = render_to_str(table) if state.positions else "No open positions.\n"
     return body + summary
+
+
+def render_history(trades) -> str:
+    """Render a list of TradeRecords as a table (newest first)."""
+    if not trades:
+        return "No order history yet."
+
+    from rich.table import Table
+
+    table = Table(title="Order history")
+    table.add_column("Date")
+    table.add_column("Symbol")
+    table.add_column("Side")
+    table.add_column("Qty", justify="right")
+    table.add_column("Price", justify="right")
+    table.add_column("State")
+    table.add_column("Source")
+    for t in trades:
+        table.add_row(
+            t.created_at,
+            t.symbol,
+            t.side,
+            fmt_num(t.quantity),
+            fmt_money(t.price),
+            t.state,
+            t.source or "-",
+        )
+    return render_to_str(table)
