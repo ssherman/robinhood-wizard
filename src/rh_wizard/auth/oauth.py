@@ -1,21 +1,14 @@
 """Assemble the mcp SDK OAuthClientProvider for the Robinhood Agentic MCP server.
 
-The pure ``build_client_metadata`` / ``oauth_base_url`` helpers are unit-tested. The
-``build_oauth_provider`` assembler imports the SDK lazily and is exercised live in
-Task 9 (it needs a browser + real server).
+The pure ``build_client_metadata`` helper is unit-tested. The ``build_oauth_provider``
+assembler imports the SDK lazily and is exercised live (it needs a browser + real server).
 """
 
 from __future__ import annotations
 
 from collections.abc import Callable
-from urllib.parse import urlsplit, urlunsplit
 
 from rh_wizard.config.settings import Settings
-
-
-def oauth_base_url(settings: Settings) -> str:
-    parts = urlsplit(settings.robinhood_mcp_url)
-    return urlunsplit((parts.scheme, parts.netloc, "", "", ""))
 
 
 def build_client_metadata(settings: Settings, redirect_uri: str) -> dict:
@@ -35,12 +28,18 @@ def build_oauth_provider(
     open_browser: Callable[[str], None],
     callback_handler,
 ):
-    """Construct an OAuthClientProvider. SDK imported lazily; verify signature in Task 9."""
+    """Construct an OAuthClientProvider. SDK imported lazily.
+
+    server_url must be the FULL MCP URL (including the ``/mcp/trading`` path): Robinhood's
+    protected-resource metadata advertises that exact resource, and the SDK validates the
+    configured resource against it. Passing the base host fails with OAuthFlowError
+    ("Protected resource ... does not match expected ...").
+    """
     from mcp.client.auth import OAuthClientProvider
     from mcp.shared.auth import OAuthClientMetadata
 
     return OAuthClientProvider(
-        server_url=oauth_base_url(settings),
+        server_url=settings.robinhood_mcp_url,
         client_metadata=OAuthClientMetadata.model_validate(
             build_client_metadata(settings, redirect_uri)
         ),
