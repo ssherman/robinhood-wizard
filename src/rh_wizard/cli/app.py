@@ -7,6 +7,7 @@ import logging
 import typer
 
 from rh_wizard.cli.auth import auth_app, run_accounts
+from rh_wizard.logging.mcp_noise import silence_session_termination_warning
 from rh_wizard.logging.redaction import install_redaction
 
 DISCLAIMER = (
@@ -27,6 +28,7 @@ def accounts() -> None:
 def main() -> None:
     logging.basicConfig(level=logging.INFO)
     install_redaction(logging.getLogger())
+    silence_session_termination_warning()
     app()
 
 
