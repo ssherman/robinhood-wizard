@@ -38,7 +38,7 @@ def test_list_tool_names():
 
 
 def test_get_accounts_parses_results():
-    payload = {"results": [{"account_number": "X1", "type": "agentic"}]}
+    payload = {"accounts": [{"account_number": "X1", "type": "agentic"}]}
     fake = FakeMCPClient([FakeTool("get_accounts")], {"data": payload})
     with BrokerClient(fake) as broker:
         accounts = broker.get_accounts()
@@ -50,7 +50,7 @@ def test_get_accounts_parses_strands_text_toolresult():
     tool_result = {
         "status": "success",
         "toolUseId": "rhw-1",
-        "content": [{"text": '{"data": {"results": [{"account_number": "AG-9"}]}}'}],
+        "content": [{"text": '{"data": {"accounts": [{"account_number": "AG-9"}]}}'}],
     }
     fake = FakeMCPClient([FakeTool("get_accounts")], tool_result)
     with BrokerClient(fake) as broker:
@@ -63,7 +63,7 @@ def test_get_accounts_prefers_structured_content():
         "status": "success",
         "toolUseId": "rhw-2",
         "content": [{"text": "ignored"}],
-        "structuredContent": {"data": {"results": [{"account_number": "AG-7"}]}},
+        "structuredContent": {"data": {"accounts": [{"account_number": "AG-7"}]}},
     }
     fake = FakeMCPClient([FakeTool("get_accounts")], tool_result)
     with BrokerClient(fake) as broker:

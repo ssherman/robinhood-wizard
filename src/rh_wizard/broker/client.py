@@ -38,7 +38,7 @@ class BrokerClient:
 
     def get_accounts(self) -> list[dict]:
         payload = self._call("get_accounts")
-        return payload.get("data", {}).get("results", [])
+        return payload.get("data", {}).get("accounts", [])
 
 
 def _coerce_payload(raw: Any) -> dict:
