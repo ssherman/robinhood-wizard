@@ -44,3 +44,33 @@ def test_get_equity_positions_paginates():
     assert [p["symbol"] for p in positions] == ["AAPL", "MSFT"]
     # second page carried the cursor extracted from page1's next URL
     assert fake.calls[1] == ("get_equity_positions", {"account_number": "ACC1", "cursor": "abc"})
+
+
+def test_get_equity_quotes_extracts_list():
+    result = {"data": {"quotes": [{"symbol": "AAPL", "last_trade_price": "190.00"}]}}
+    fake = ScriptedMCPClient([result])
+    with BrokerClient(fake) as broker:
+        quotes = broker.get_equity_quotes(["AAPL"])
+    assert quotes[0]["symbol"] == "AAPL"
+    assert fake.calls[0] == ("get_equity_quotes", {"symbols": ["AAPL"]})
+
+
+def test_get_equity_quotes_empty_short_circuits():
+    fake = ScriptedMCPClient([])  # no result needed; should not call the tool
+    with BrokerClient(fake) as broker:
+        assert broker.get_equity_quotes([]) == []
+    assert fake.calls == []
+
+
+def test_get_equity_orders_paginates_and_forwards_filters():
+    page1 = {"data": {"orders": [{"id": "O1"}], "next": "https://x/y?cursor=n2"}}
+    page2 = {"data": {"orders": [{"id": "O2"}], "next": None}}
+    fake = ScriptedMCPClient([page1, page2])
+    with BrokerClient(fake) as broker:
+        orders = broker.get_equity_orders("ACC1", created_at_gte="2026-01-01")
+    assert [o["id"] for o in orders] == ["O1", "O2"]
+    assert fake.calls[0] == (
+        "get_equity_orders",
+        {"account_number": "ACC1", "created_at_gte": "2026-01-01"},
+    )
+    assert fake.calls[1][1]["cursor"] == "n2"

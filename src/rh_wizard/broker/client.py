@@ -46,6 +46,29 @@ class BrokerClient:
     def get_equity_positions(self, account_number: str) -> list[dict]:
         return self._paginate("get_equity_positions", "positions", account_number=account_number)
 
+    def get_equity_quotes(self, symbols: list[str]) -> list[dict]:
+        if not symbols:
+            return []
+        payload = self._call("get_equity_quotes", symbols=list(symbols))
+        return _extract_list(payload, "quotes")
+
+    def get_equity_orders(
+        self,
+        account_number: str,
+        *,
+        created_at_gte: str | None = None,
+        state: str | None = None,
+        placed_agent: str | None = None,
+    ) -> list[dict]:
+        args: dict[str, Any] = {"account_number": account_number}
+        if created_at_gte:
+            args["created_at_gte"] = created_at_gte
+        if state:
+            args["state"] = state
+        if placed_agent:
+            args["placed_agent"] = placed_agent
+        return self._paginate("get_equity_orders", "orders", **args)
+
     def _paginate(self, name: str, key: str, **arguments: Any) -> list[dict]:
         """Follow ``next`` cursors, flattening the ``key`` list across all pages."""
         items: list[dict] = []
