@@ -27,7 +27,7 @@ def _is_agentic(account: dict) -> bool:
 
 
 def select_account(accounts: list[dict], pinned: str | None = None) -> dict:
-    if pinned:
+    if pinned is not None:
         for a in accounts:
             if str(a.get("account_number")) == pinned:
                 return a

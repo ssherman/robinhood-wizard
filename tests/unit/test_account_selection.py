@@ -57,3 +57,14 @@ def test_resolve_uses_broker_and_settings():
             return [{"account_number": "ACC1", "type": "agentic"}]
 
     assert resolve_account_number(FakeBroker(), Settings()) == "ACC1"
+
+
+def test_resolve_honors_pin():
+    class FakeBroker:
+        def get_accounts(self):
+            return [
+                {"account_number": "ACC1", "type": "margin"},
+                {"account_number": "ACC2", "type": "cash"},
+            ]
+
+    assert resolve_account_number(FakeBroker(), Settings(account_number="ACC2")) == "ACC2"
