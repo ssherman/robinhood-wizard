@@ -5,7 +5,7 @@ robinhood_mcp_url: "https://agent.robinhood.com/mcp/trading"
 model_provider: "anthropic"        # or "bedrock", "openai", ...
 model_id: "claude-sonnet-4-6"      # your chosen model
 
-# OAuth localhost callback used during `wizard auth login`:
+# These values build the redirect_uri registered with Robinhood and shown during the paste-based consent flow:
 oauth_redirect_host: "localhost"
 oauth_redirect_port: 3030
 oauth_client_name: "Robinhood Wizard"
