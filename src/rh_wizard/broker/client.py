@@ -40,6 +40,24 @@ class BrokerClient:
         payload = self._call("get_accounts")
         return payload.get("data", {}).get("accounts", [])
 
+    def get_portfolio(self, account_number: str) -> dict:
+        return self._call("get_portfolio", account_number=account_number)
+
+    def get_equity_positions(self, account_number: str) -> list[dict]:
+        return self._paginate("get_equity_positions", "positions", account_number=account_number)
+
+    def _paginate(self, name: str, key: str, **arguments: Any) -> list[dict]:
+        """Follow ``next`` cursors, flattening the ``key`` list across all pages."""
+        items: list[dict] = []
+        cursor: str | None = None
+        while True:
+            args = {**arguments, "cursor": cursor} if cursor else dict(arguments)
+            payload = self._call(name, **args)
+            items.extend(_extract_list(payload, key))
+            cursor = _next_cursor(payload)
+            if not cursor:
+                return items
+
 
 def _coerce_payload(raw: Any) -> dict:
     """Normalize a Strands tool result into the MCP tool's JSON payload dict.
@@ -74,6 +92,29 @@ def _coerce_payload(raw: Any) -> dict:
     if isinstance(text, str):
         return json.loads(text)
     return {}
+
+
+def _extract_list(payload: dict, key: str) -> list[dict]:
+    """Pull a results list out of a tool payload, tolerant of nesting shape."""
+    data = payload.get("data")
+    if isinstance(data, dict) and isinstance(data.get(key), list):
+        return data[key]
+    if isinstance(payload.get(key), list):
+        return payload[key]
+    if isinstance(payload.get("results"), list):
+        return payload["results"]
+    return []
+
+
+def _next_cursor(payload: dict) -> str | None:
+    """Extract the ``cursor`` query param from a payload's ``next`` URL, if any."""
+    from urllib.parse import parse_qs, urlsplit
+
+    data = payload.get("data") if isinstance(payload.get("data"), dict) else payload
+    nxt = data.get("next") if isinstance(data, dict) else None
+    if not isinstance(nxt, str) or not nxt:
+        return None
+    return (parse_qs(urlsplit(nxt).query).get("cursor") or [None])[0]
 
 
 def make_broker_client(settings: Settings, oauth_provider: Any) -> BrokerClient:
