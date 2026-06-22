@@ -13,9 +13,7 @@ def test_defaults_when_no_file(tmp_path):
 def test_file_overrides_defaults(tmp_path):
     cfg = tmp_path / "config.yaml"
     cfg.write_text(
-        "model_provider: bedrock\n"
-        "model_id: claude-opus-4-8\n"
-        "oauth_redirect_port: 4040\n"
+        "model_provider: bedrock\nmodel_id: claude-opus-4-8\noauth_redirect_port: 4040\n"
     )
     s = load_settings(cfg)
     assert s.model_provider == "bedrock"
