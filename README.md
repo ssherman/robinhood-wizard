@@ -30,6 +30,19 @@ uv run wizard accounts                             # verify the connection
 
 Tokens and your local database live under `~/.rh-wizard/` and are never committed.
 
+## Usage
+
+After `wizard auth login`:
+
+- `wizard positions` — reconcile live broker state and show current holdings
+  (quantity, average cost, current price, market value, unrealized P/L), plus cash,
+  buying power, and total return.
+- `wizard history [--limit N] [--since YYYY-MM-DD]` — sync your equity order history
+  into the local journal (`~/.rh-wizard/wizard.db`) and show recent trades.
+
+All output masks account numbers to the last 4 characters. These commands are read-only —
+no orders are placed or cancelled.
+
 ## License
 
 MIT — see [LICENSE](LICENSE).

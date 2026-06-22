@@ -276,6 +276,33 @@ against the real Robinhood Agentic MCP server under WSL2.
    endpoint) — cosmetic, to be silenced; account numbers are not yet masked in user-facing
    output (the tool guide recommends masking all but the last 4 digits).
 
+### Phase 1 note (2026-06-22) — field names PENDING live confirmation
+
+The Phase 1 read endpoints — positions, portfolio summary, quotes, and equity orders —
+are implemented with **defensive parsers** (`_extract_list`, `_to_position`,
+`_extract_cash`, `_quote_price`, `_is_agentic`, `_to_trade_record`, `_order_price`) that
+make best-effort guesses at the payload field names based on the Phase 0 `get_accounts`
+shape and the Robinhood tool-guide descriptions.
+
+**Exact payload field names for these endpoints are PENDING live confirmation** via the
+opt-in integration test:
+
+```
+RH_WIZARD_LIVE=1 uv run pytest tests/integration/test_live_portfolio.py -v -s
+```
+
+Until that test is run against a real Robinhood Agentic account, the following are
+**assumed but not yet confirmed:**
+- Positions nesting key (e.g. `data.results` or `data.positions`)
+- Price field name (e.g. `last_trade_price`, `price`, or `mark_price`)
+- Agentic account type discriminator field and value (e.g. `brokerage_account_type = 'agentic'`)
+- Portfolio cash/buying-power field names
+- Order pagination cursor key (`next` vs `cursor` vs `next_page`)
+
+Once the live test passes and the printed `PortfolioState` / trades show real field
+values, update the parser key names in `broker/client.py`, `memory/portfolio.py`, and
+`memory/sync.py` to match the confirmed shapes, then record a "RESOLVED" entry here.
+
 ## 19. Open-Source Considerations
 
 The project is intended to be released publicly under the **MIT license**. This is a design
