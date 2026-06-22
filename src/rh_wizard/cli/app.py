@@ -35,7 +35,9 @@ def positions() -> None:
 @app.command()
 def history(
     limit: int = typer.Option(50, help="Max number of orders to show."),
-    since: str = typer.Option(None, help="Only sync orders on/after this date (YYYY-MM-DD)."),
+    since: str | None = typer.Option(
+        None, help="Only sync orders on/after this date (YYYY-MM-DD)."
+    ),
 ) -> None:
     """Sync broker order history into the journal and show recent trades."""
     run_history(limit, since)
