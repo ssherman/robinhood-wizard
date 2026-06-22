@@ -1,14 +1,13 @@
 """Typed wrapper over the Strands MCPClient bound to the Robinhood MCP server.
 
 This is the single module that knows about MCP. ``BrokerClient`` adds typed helpers and
-result parsing; ``make_broker_client`` builds the authenticated transport. The transport
-construction is verified against the installed ``mcp`` version in Task 9 (see the §18 note
-in the task header).
+result parsing; ``make_broker_client`` builds the authenticated transport.
 """
 
 from __future__ import annotations
 
 import json
+import uuid
 from typing import Any
 
 from rh_wizard.config.settings import Settings
@@ -29,7 +28,12 @@ class BrokerClient:
         return [t.tool_name for t in self._mcp.list_tools_sync()]
 
     def _call(self, name: str, **arguments: Any) -> dict:
-        raw = self._mcp.call_tool_sync(name=name, arguments=arguments or None)
+        # Strands requires a unique tool_use_id per call.
+        raw = self._mcp.call_tool_sync(
+            tool_use_id=f"rhw-{uuid.uuid4().hex}",
+            name=name,
+            arguments=arguments or None,
+        )
         return _coerce_payload(raw)
 
     def get_accounts(self) -> list[dict]:
@@ -38,13 +42,34 @@ class BrokerClient:
 
 
 def _coerce_payload(raw: Any) -> dict:
-    """Normalize an MCP tool result into a dict.
+    """Normalize a Strands tool result into the MCP tool's JSON payload dict.
 
-    Strands may return the structured content directly, or a result object whose text
-    content holds a JSON string. Handle both.
+    Strands ``call_tool_sync`` returns an ``MCPToolResult`` (a dict): ``content`` is a list of
+    ``{"text": ...}`` / ``{"json": ...}`` items, and ``structuredContent`` holds the raw
+    structured dict when the tool provides it. Robinhood tools return their payload as a JSON
+    string in a text item (and usually also as ``structuredContent``). Prefer the structured
+    dict, then a json item, then a parsed text item.
     """
     if isinstance(raw, dict):
+        structured = raw.get("structuredContent")
+        if isinstance(structured, dict):
+            return structured
+        content = raw.get("content")
+        if isinstance(content, list):
+            for item in content:
+                if isinstance(item, dict) and isinstance(item.get("json"), dict):
+                    return item["json"]
+            for item in content:
+                text = item.get("text") if isinstance(item, dict) else None
+                if isinstance(text, str):
+                    try:
+                        return json.loads(text)
+                    except json.JSONDecodeError:
+                        continue
+            return {}
+        # Legacy/simple dict payload (e.g. a {"data": {...}} fixture).
         return raw
+    # Object whose .content is a JSON string (older shape).
     text = getattr(raw, "content", None)
     if isinstance(text, str):
         return json.loads(text)
