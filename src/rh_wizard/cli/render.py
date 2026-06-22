@@ -36,3 +36,35 @@ def fmt_pct(value) -> str:
 
 def fmt_num(value) -> str:
     return "-" if value is None else str(value)
+
+
+def render_positions(state) -> str:
+    """Render a PortfolioState as a table plus a summary line."""
+    from rich.table import Table
+
+    table = Table(title=f"Positions — account {mask_account(state.account_number)}")
+    table.add_column("Symbol")
+    table.add_column("Qty", justify="right")
+    table.add_column("Avg Cost", justify="right")
+    table.add_column("Price", justify="right")
+    table.add_column("Mkt Value", justify="right")
+    table.add_column("Unrealized P/L", justify="right")
+    table.add_column("%", justify="right")
+    for p in state.positions:
+        table.add_row(
+            p.symbol,
+            fmt_num(p.quantity),
+            fmt_money(p.average_cost),
+            fmt_money(p.current_price),
+            fmt_money(p.market_value),
+            fmt_money(p.unrealized_pl),
+            fmt_pct(p.unrealized_pl_pct),
+        )
+    summary = (
+        f"Cash: {fmt_money(state.cash)}   "
+        f"Buying power: {fmt_money(state.buying_power)}   "
+        f"Total value: {fmt_money(state.total_value)}   "
+        f"Total return: {fmt_pct(state.total_return_pct)}"
+    )
+    body = render_to_str(table) if state.positions else "No open positions.\n"
+    return body + summary
