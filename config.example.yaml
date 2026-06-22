@@ -1,0 +1,11 @@
+# Copy to ~/.rh-wizard/config.yaml and edit. Placeholders only — no real secrets here.
+robinhood_mcp_url: "https://agent.robinhood.com/mcp/trading"
+
+# Provider-agnostic model selection (Strands). Examples:
+model_provider: "anthropic"        # or "bedrock", "openai", ...
+model_id: "claude-sonnet-4-6"      # your chosen model
+
+# OAuth localhost callback used during `wizard auth login`:
+oauth_redirect_host: "localhost"
+oauth_redirect_port: 3030
+oauth_client_name: "Robinhood Wizard"
