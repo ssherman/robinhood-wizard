@@ -53,6 +53,7 @@ architecture is designed so autonomy is a configuration change, not a rewrite.
 | 8 | Architecture style | **Approach 3 — Hybrid**: deterministic skeleton owns control flow, guardrails, and execution; the LLM runs loose only inside research & plan-generation. |
 | 9 | Guardrails | Fully **per-strategy** `RiskPolicy` (overrides ∘ global defaults), with a small always-on **integrity floor** (reconciliation, audit log, review-before-place) and an optional global **hard-ceiling** bounding strategy overrides. |
 | 10 | Broker auth | Robinhood MCP uses **OAuth 2.1** (PKCE + dynamic client registration). Browser consent once; refresh token cached to disk; silent refresh thereafter. |
+| 11 | Distribution | Intended to be **open-sourced under the MIT license**. Drives secrets hygiene, a financial/legal disclaimer, no personal config in-repo, and community/CI files (see §19). |
 
 ## 4. Guiding Principles
 
@@ -259,7 +260,33 @@ robinhood-wizard/
 4. **Rate limits & scopes** are undocumented — discover empirically; design backoff defensively.
 5. **Token refresh rotation** behavior and undocumented token fields (`mfa_code`, `backup_code`).
 
-## 19. Future Roadmap (post-v1)
+## 19. Open-Source Considerations
+
+The project is intended to be released publicly under the **MIT license**. This is a design
+constraint from day one, not a later cleanup:
+
+- **License:** `MIT` (`LICENSE` file at repo root, copyright holder = the author).
+- **Secrets hygiene (critical — this repo holds trading credentials):**
+  - OAuth tokens, the SQLite DB, and any `.env` are gitignored and **never committed**.
+  - Config and runtime state live in `~/.rh-wizard/`, never in the repo. A committed
+    `config.example.yaml` / `.env.example` contains placeholders only.
+  - **No credentials, account numbers, or PII are ever logged.** The audit log and journal
+    must be safe to share — sensitive identifiers (account numbers, tokens) are redacted or
+    omitted. A test asserts logs contain no secret-shaped values.
+- **Financial / legal disclaimer (mandatory before others run it):** a prominent notice in the
+  `README` and on first CLI run — *not financial advice, no warranty, use at your own risk, the
+  authors are not liable for any financial loss.* The software places real trades.
+- **No personal config baked in:** no hardcoded strategies, account specifics, or defaults
+  tied to the author. Everything user-specific is user-provided.
+- **Community & quality files:** `README` (setup, how to get a Robinhood Agentic account,
+  OAuth flow, configuration), `CONTRIBUTING.md`, `SECURITY.md` (responsible disclosure — the
+  project handles money and credentials), and `CODE_OF_CONDUCT.md` (optional).
+- **CI:** GitHub Actions running `ruff` (lint + format check) and `pytest` on push/PR — also
+  reinforces the clean, well-tested public interfaces the framework depends on.
+- **Public API quality:** plugin seams (`Strategy`, `DataSource`, `OrderExecutor`, `Journal`)
+  get docstrings and stable typed signatures, since third parties will extend them.
+
+## 20. Future Roadmap (post-v1)
 
 - EDGAR + AlphaVantage data sources for deep fundamental factor screens (Piotroski, ROIC, FCF
   yield, EV/EBIT, Debt/EBITDA, revenue trend).
