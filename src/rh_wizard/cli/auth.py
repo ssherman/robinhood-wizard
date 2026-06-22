@@ -11,6 +11,7 @@ import typer
 from rh_wizard.auth.oauth import build_oauth_provider
 from rh_wizard.auth.token_storage import DiskTokenStorage
 from rh_wizard.broker.client import make_broker_client
+from rh_wizard.cli.render import mask_account
 from rh_wizard.config import paths
 from rh_wizard.config.settings import Settings, load_settings
 from rh_wizard.logging.redaction import redact
@@ -86,4 +87,7 @@ def run_accounts() -> None:
     with broker:
         accounts = broker.get_accounts()
     for acct in accounts:
-        typer.echo(redact(str(acct)))
+        shown = dict(acct)
+        if "account_number" in shown:
+            shown["account_number"] = mask_account(str(shown["account_number"]))
+        typer.echo(redact(str(shown)))
