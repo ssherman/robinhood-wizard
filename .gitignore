@@ -9,3 +9,4 @@ tokens.json
 dist/
 build/
 *.egg-info/
+.superpowers/
