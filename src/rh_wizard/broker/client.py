@@ -47,10 +47,23 @@ class BrokerClient:
         return self._paginate("get_equity_positions", "positions", account_number=account_number)
 
     def get_equity_quotes(self, symbols: list[str]) -> list[dict]:
+        """Return the live ``quote`` object for each symbol (symbol + prices at top level).
+
+        Live-confirmed (Phase 1 §18): the payload is ``data.results[]``, where each entry
+        pairs ``{"quote": {...}, "close": {...}}``. We unwrap to the inner ``quote`` dict so
+        callers see ``symbol`` / ``last_trade_price`` directly. A flat shape is tolerated.
+        """
         if not symbols:
             return []
         payload = self._call("get_equity_quotes", symbols=list(symbols))
-        return _extract_list(payload, "quotes")
+        items = _extract_list(payload, "results") or _extract_list(payload, "quotes")
+        quotes: list[dict] = []
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            inner = item.get("quote")
+            quotes.append(inner if isinstance(inner, dict) else item)
+        return quotes
 
     def get_equity_orders(
         self,

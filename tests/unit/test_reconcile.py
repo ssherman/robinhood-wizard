@@ -10,10 +10,23 @@ class FakeBroker:
 
     def get_equity_positions(self, account_number):
         assert account_number == "ACC1"
-        return [{"symbol": "AAPL", "quantity": "10", "average_cost": "100"}]
+        # Live shape (§18): positions carry average_buy_price, not average_cost.
+        return [{"symbol": "AAPL", "quantity": "10", "average_buy_price": "100"}]
 
     def get_portfolio(self, account_number):
-        return {"data": {"cash": "500.00", "buying_power": "500.00"}}
+        # Live shape (§18): cash is top-level; buying_power is a nested object.
+        return {
+            "data": {
+                "total_value": "3000",
+                "equity_value": "0",
+                "cash": "500.00",
+                "buying_power": {
+                    "buying_power": "500.00",
+                    "unleveraged_buying_power": "500.00",
+                    "display_currency": "USD",
+                },
+            }
+        }
 
 
 def test_reconcile_builds_portfolio_state():

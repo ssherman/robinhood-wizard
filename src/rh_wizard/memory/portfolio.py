@@ -6,7 +6,7 @@ storage for holdings.
 
 from __future__ import annotations
 
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 
 from rh_wizard.cli.render import mask_account
 from rh_wizard.models.portfolio import PortfolioState, Position
@@ -65,18 +65,49 @@ def _to_position(raw: dict) -> Position:
     )
 
 
+def _to_decimal(value) -> Decimal | None:
+    """Coerce a broker numeric (string/number) to Decimal, or None if not numeric."""
+    if value is None:
+        return None
+    try:
+        return Decimal(str(value))
+    except (InvalidOperation, ValueError, TypeError):
+        return None
+
+
 def _extract_cash(portfolio: dict) -> tuple[Decimal, Decimal]:
+    """Pull (cash, buying_power) from a get_portfolio payload.
+
+    Live-confirmed (Phase 1 §18): ``cash`` is a top-level numeric string, while
+    ``buying_power`` is a NESTED object ``{"buying_power": "...",
+    "unleveraged_buying_power": "...", "display_currency": "..."}``. We read the nested
+    value, with a scalar fallback for robustness.
+    """
     data = portfolio.get("data") if isinstance(portfolio.get("data"), dict) else portfolio
 
-    def dec(*keys: str) -> Decimal:
+    def first(*keys: str) -> Decimal:
         for k in keys:
-            value = data.get(k)
-            if value is not None:
-                return Decimal(str(value))
+            d = _to_decimal(data.get(k))
+            if d is not None:
+                return d
         return Decimal("0")
 
-    cash = dec("cash", "uninvested_cash", "cash_available_for_withdrawal")
-    buying_power = dec("buying_power", "equity_buying_power")
+    cash = first("cash", "uninvested_cash", "cash_available_for_withdrawal")
+
+    bp_raw = data.get("buying_power")
+    buying_power = Decimal("0")
+    if isinstance(bp_raw, dict):
+        for k in ("buying_power", "unleveraged_buying_power"):
+            d = _to_decimal(bp_raw.get(k))
+            if d is not None:
+                buying_power = d
+                break
+    else:
+        for candidate in (bp_raw, data.get("equity_buying_power")):
+            d = _to_decimal(candidate)
+            if d is not None:
+                buying_power = d
+                break
     return cash, buying_power
 
 

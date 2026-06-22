@@ -46,13 +46,34 @@ def test_get_equity_positions_paginates():
     assert fake.calls[1] == ("get_equity_positions", {"account_number": "ACC1", "cursor": "abc"})
 
 
-def test_get_equity_quotes_extracts_list():
-    result = {"data": {"quotes": [{"symbol": "AAPL", "last_trade_price": "190.00"}]}}
+def test_get_equity_quotes_unwraps_nested_quote():
+    # Live shape (§18): data.results[] pairs {"quote": {...}, "close": {...}};
+    # get_equity_quotes unwraps to the inner quote dict.
+    result = {
+        "data": {
+            "results": [
+                {
+                    "quote": {"symbol": "AAPL", "last_trade_price": "190.00"},
+                    "close": {"symbol": "AAPL", "price": "189.00"},
+                }
+            ]
+        }
+    }
     fake = ScriptedMCPClient([result])
     with BrokerClient(fake) as broker:
         quotes = broker.get_equity_quotes(["AAPL"])
     assert quotes[0]["symbol"] == "AAPL"
+    assert quotes[0]["last_trade_price"] == "190.00"
     assert fake.calls[0] == ("get_equity_quotes", {"symbols": ["AAPL"]})
+
+
+def test_get_equity_quotes_tolerates_flat_shape():
+    # Defensive: a flat {"quotes": [...]} shape still works.
+    result = {"data": {"quotes": [{"symbol": "MSFT", "last_trade_price": "400.00"}]}}
+    fake = ScriptedMCPClient([result])
+    with BrokerClient(fake) as broker:
+        quotes = broker.get_equity_quotes(["MSFT"])
+    assert quotes[0]["symbol"] == "MSFT"
 
 
 def test_get_equity_quotes_empty_short_circuits():

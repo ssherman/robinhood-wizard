@@ -276,32 +276,42 @@ against the real Robinhood Agentic MCP server under WSL2.
    endpoint) — cosmetic, to be silenced; account numbers are not yet masked in user-facing
    output (the tool guide recommends masking all but the last 4 digits).
 
-### Phase 1 note (2026-06-22) — field names PENDING live confirmation
+### Phase 1 read shapes — RESOLVED live (2026-06-22)
 
-The Phase 1 read endpoints — positions, portfolio summary, quotes, and equity orders —
-are implemented with **defensive parsers** (`_extract_list`, `_to_position`,
-`_extract_cash`, `_quote_price`, `_is_agentic`, `_to_trade_record`, `_order_price`) that
-make best-effort guesses at the payload field names based on the Phase 0 `get_accounts`
-shape and the Robinhood tool-guide descriptions.
+Verified against the real Robinhood Agentic MCP server via
+`RH_WIZARD_LIVE=1 uv run pytest tests/integration/test_live_portfolio.py`. Confirmed
+payload shapes (parsers in `broker/client.py`, `memory/portfolio.py`, `memory/sync.py`
+match these):
 
-**Exact payload field names for these endpoints are PENDING live confirmation** via the
-opt-in integration test:
-
-```
-RH_WIZARD_LIVE=1 uv run pytest tests/integration/test_live_portfolio.py -v -s
-```
-
-Until that test is run against a real Robinhood Agentic account, the following are
-**assumed but not yet confirmed:**
-- Positions nesting key (e.g. `data.results` or `data.positions`)
-- Price field name (e.g. `last_trade_price`, `price`, or `mark_price`)
-- Agentic account type discriminator field and value (e.g. `brokerage_account_type = 'agentic'`)
-- Portfolio cash/buying-power field names
-- Order pagination cursor key (`next` vs `cursor` vs `next_page`)
-
-Once the live test passes and the printed `PortfolioState` / trades show real field
-values, update the parser key names in `broker/client.py`, `memory/portfolio.py`, and
-`memory/sync.py` to match the confirmed shapes, then record a "RESOLVED" entry here.
+1. **`get_accounts` — CONFIRMED.** `data.accounts[]`; each has `account_number`,
+   `rhs_account_number` (used for crypto flows), `type` (`margin`/`cash`),
+   `brokerage_account_type`, optional `nickname`, `is_default`, and `agentic_allowed`
+   (bool). The agentic account is the one with **`agentic_allowed: true`** (NOT a distinct
+   `type`); `agentic_allowed` is caller-relative — skip `false` accounts for trades.
+2. **`get_portfolio` — RESOLVED (was the live bug).** `data.{total_value, equity_value,
+   options_value, …, cash, currency}` are top-level numeric **strings**, but
+   **`buying_power` is a nested object** `{"buying_power": "3000.0000",
+   "unleveraged_buying_power": "…", "display_currency": "USD"}`. `cash` is the top-level
+   field. The original parser did `Decimal(str(buying_power))` on the dict →
+   `InvalidOperation`; `_extract_cash` now reads `buying_power.buying_power` (with a scalar
+   fallback) and guards non-numeric via `_to_decimal`.
+3. **`get_equity_positions` — CONFIRMED.** `data.positions[]`; fields `symbol`, `quantity`,
+   **`average_buy_price`** (the app's average cost, may be omitted while reconciling — not
+   `average_cost`), `shares_available_for_sells`, `intraday_quantity`, `type`. No market
+   price here (use quotes). `_to_position` already falls back to `average_buy_price`.
+4. **`get_equity_quotes` — RESOLVED.** `data.results[]`, each entry pairs
+   **`{"quote": {…}, "close": {…}}`**. The live price lives at `results[].quote.symbol` /
+   `quote.last_trade_price` (also `last_non_reg_trade_price`, `previous_close`,
+   `bid_price`/`ask_price`). `get_equity_quotes` now unwraps to the inner `quote` dict so
+   `_quote_price` (which reads `last_trade_price`) and symbol-keying work.
+5. **`get_equity_orders` — CONFIRMED.** `data.orders[]`; fields `id`, `symbol`, `side`,
+   `type`, `state`, `quantity` (**nullable** for dollar-based orders),
+   `dollar_based_amount`, `cumulative_quantity`, `price`, `average_price`, `created_at` /
+   `last_transaction_at`, `placed_agent`. Matches `_to_trade_record`; `_order_quantity`
+   guards the null quantity.
+6. **Pagination — CONFIRMED present.** Positions/orders use `data.<key>` + a `next` URL
+   whose `cursor` query param drives `_next_cursor` (empty lists for this account, but the
+   nesting/keys match).
 
 ## 19. Open-Source Considerations
 

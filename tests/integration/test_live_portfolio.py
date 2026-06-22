@@ -3,8 +3,8 @@
 Run explicitly (needs a cached token from `wizard auth login`):
     RH_WIZARD_LIVE=1 uv run pytest tests/integration/test_live_portfolio.py -v -s
 
-Prints the reconciled portfolio and synced history so the assumed payload field names in
-the broker/reconcile/sync parsers can be confirmed (see spec §18).
+Prints a summary of the reconciled portfolio and synced history so the parsers can be
+sanity-checked (see spec §18). The account number is masked in output per §19 hygiene.
 """
 
 import os
@@ -19,6 +19,7 @@ pytestmark = pytest.mark.skipif(
 
 def test_reconcile_and_history_live(tmp_path):
     from rh_wizard.cli import auth
+    from rh_wizard.cli.render import mask_account
     from rh_wizard.config.settings import load_settings
     from rh_wizard.memory.journal import SqliteJournal
     from rh_wizard.memory.portfolio import (
@@ -37,9 +38,11 @@ def test_reconcile_and_history_live(tmp_path):
             synced = sync_equity_orders(broker, account_number, journal)
             trades = journal.recent_trades()
 
-    print("\nPortfolioState:", state.model_dump())
-    print("Synced orders:", synced)
-    print("Recent trades:", [t.model_dump() for t in trades])
+    print(f"\nAccount: {mask_account(state.account_number)}")
+    print(f"Cash: {state.cash}   Buying power: {state.buying_power}")
+    print(f"Positions: {len(state.positions)}   Synced orders: {synced}   Trades: {len(trades)}")
+    for p in state.positions:
+        print(f"  {p.symbol}: qty={p.quantity} avg={p.average_cost} mkt={p.market_value}")
 
     assert state.account_number
     assert isinstance(state.positions, list)
