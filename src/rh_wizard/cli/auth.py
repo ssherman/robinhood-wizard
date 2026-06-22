@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+import asyncio
 import webbrowser
+from urllib.parse import parse_qs, urlsplit
 
 import typer
 
-from rh_wizard.auth.callback import OAuthCallbackServer
 from rh_wizard.auth.oauth import build_oauth_provider
 from rh_wizard.auth.token_storage import DiskTokenStorage
 from rh_wizard.broker.client import make_broker_client
@@ -17,16 +18,53 @@ from rh_wizard.logging.redaction import redact
 auth_app = typer.Typer(help="Authenticate with the Robinhood Agentic MCP server.")
 
 
+def _redirect_uri(settings: Settings) -> str:
+    return f"http://{settings.oauth_redirect_host}:{settings.oauth_redirect_port}/callback"
+
+
+async def _redirect_handler(url: str) -> None:
+    """Open the Robinhood consent page, and always print the URL as a fallback.
+
+    Async because the mcp SDK awaits this handler.
+    """
+    typer.echo("\nAuthorize Robinhood Wizard in your browser (opening it now):\n")
+    typer.echo(f"  {url}\n")
+    try:
+        webbrowser.open(url)
+    except Exception:  # browser launch is best-effort; the printed URL is the fallback
+        pass
+
+
+async def _paste_callback_handler() -> tuple[str, str | None]:
+    """Read the OAuth redirect URL the user pastes and extract (code, state).
+
+    This avoids any dependence on localhost being reachable from the browser (the page at
+    the redirect URL may fail to load, e.g. under WSL — that's fine, the code is in the
+    address bar). Async because the mcp SDK awaits this handler.
+    """
+    typer.echo(
+        "After approving, copy the FULL URL your browser was redirected to\n"
+        "(it looks like http://localhost:3030/callback?code=...&state=...) and paste it below.\n"
+        "The page itself may fail to load — that's expected; just copy its address."
+    )
+    pasted = (await asyncio.to_thread(input, "Redirect URL: ")).strip()
+    query = parse_qs(urlsplit(pasted).query)
+    code = (query.get("code") or [None])[0]
+    state = (query.get("state") or [None])[0]
+    if not code:
+        raise ValueError("No ?code= found in the pasted URL — paste the full redirect URL.")
+    return code, state
+
+
 def _build_broker(settings: Settings):
     """Build an authenticated BrokerClient (real path; patched in tests)."""
     storage = DiskTokenStorage(paths.tokens_path())
-    callback = OAuthCallbackServer(settings.oauth_redirect_host, settings.oauth_redirect_port)
     provider = build_oauth_provider(
         settings,
         storage,
-        callback.redirect_uri,
-        open_browser=lambda url: webbrowser.open(url),
-        callback_handler=lambda: callback.wait_for_code(timeout=300),
+        _redirect_uri(settings),
+        _redirect_handler,
+        _paste_callback_handler,
     )
     return make_broker_client(settings, provider)
 

@@ -6,7 +6,7 @@ assembler imports the SDK lazily and is exercised live (it needs a browser + rea
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 
 from rh_wizard.config.settings import Settings
 
@@ -25,8 +25,8 @@ def build_oauth_provider(
     settings: Settings,
     storage,
     redirect_uri: str,
-    open_browser: Callable[[str], None],
-    callback_handler,
+    redirect_handler: Callable[[str], Awaitable[None]],
+    callback_handler: Callable[[], Awaitable[tuple[str, str | None]]],
 ):
     """Construct an OAuthClientProvider. SDK imported lazily.
 
@@ -34,6 +34,10 @@ def build_oauth_provider(
     protected-resource metadata advertises that exact resource, and the SDK validates the
     configured resource against it. Passing the base host fails with OAuthFlowError
     ("Protected resource ... does not match expected ...").
+
+    redirect_handler and callback_handler MUST be async — the SDK awaits them:
+    ``redirect_handler(url) -> None`` opens/prints the consent URL; ``callback_handler()``
+    returns ``(authorization_code, state)``.
     """
     from mcp.client.auth import OAuthClientProvider
     from mcp.shared.auth import OAuthClientMetadata
@@ -44,6 +48,6 @@ def build_oauth_provider(
             build_client_metadata(settings, redirect_uri)
         ),
         storage=storage,
-        redirect_handler=open_browser,
+        redirect_handler=redirect_handler,
         callback_handler=callback_handler,
     )
