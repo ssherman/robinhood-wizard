@@ -91,3 +91,55 @@ def reconcile(broker, settings) -> PortfolioState:
         cash=cash,
         buying_power=buying_power,
     )
+
+
+def _quote_price(quote: dict) -> Decimal | None:
+    for key in ("last_trade_price", "price", "last_price", "mark_price"):
+        value = quote.get(key)
+        if value is not None:
+            return Decimal(str(value))
+    return None
+
+
+def enrich_with_quotes(state: PortfolioState, broker) -> PortfolioState:
+    symbols = [p.symbol for p in state.positions if p.symbol]
+    if not symbols:
+        return state
+    quotes = {q.get("symbol"): q for q in broker.get_equity_quotes(symbols)}
+
+    enriched: list[Position] = []
+    total_mv = Decimal("0")
+    total_cb = Decimal("0")
+    for p in state.positions:
+        quote = quotes.get(p.symbol)
+        price = _quote_price(quote) if quote else None
+        if price is None:
+            enriched.append(p)
+            continue
+        market_value = p.quantity * price
+        unrealized_pl = market_value - p.cost_basis
+        unrealized_pl_pct = unrealized_pl / p.cost_basis * 100 if p.cost_basis else None
+        total_mv += market_value
+        total_cb += p.cost_basis
+        enriched.append(
+            p.model_copy(
+                update={
+                    "current_price": price,
+                    "market_value": market_value,
+                    "unrealized_pl": unrealized_pl,
+                    "unrealized_pl_pct": unrealized_pl_pct,
+                }
+            )
+        )
+
+    market_value = total_mv if total_mv else None
+    total_value = market_value + state.cash if market_value is not None else None
+    total_return_pct = (total_mv - total_cb) / total_cb * 100 if total_cb else None
+    return state.model_copy(
+        update={
+            "positions": enriched,
+            "market_value": market_value,
+            "total_value": total_value,
+            "total_return_pct": total_return_pct,
+        }
+    )
