@@ -37,3 +37,31 @@ def test_install_redaction_is_idempotent():
     install_redaction(logger)
     install_redaction(logger)
     assert sum(isinstance(f, RedactingFilter) for f in logger.filters) == 1
+
+
+def test_filter_scrubs_tuple_args(caplog):
+    logger = logging.getLogger("rh_wizard.test.tuple_args")
+    logger.addFilter(RedactingFilter())
+    with caplog.at_level(logging.INFO, logger="rh_wizard.test.tuple_args"):
+        logger.info("header: %s done", "Bearer abcdef1234567890")
+    assert "abcdef1234567890" not in caplog.text
+    # Verify the record formats without error
+    msg = caplog.records[-1].getMessage()
+    assert "[REDACTED]" in msg
+
+
+def test_filter_scrubs_dict_args(caplog):
+    logger = logging.getLogger("rh_wizard.test.dict_args")
+    logger.addFilter(RedactingFilter())
+    with caplog.at_level(logging.INFO, logger="rh_wizard.test.dict_args"):
+        logger.info("token %(tok)s", {"tok": "Bearer abcdef1234567890"})
+    assert "abcdef1234567890" not in caplog.text
+    # This call would raise TypeError if dict args were iterated as keys
+    msg = caplog.records[-1].getMessage()
+    assert "[REDACTED]" in msg
+
+
+def test_redacts_base64_bearer():
+    out = redact("Authorization: Bearer ab+cd/ef==gh12")
+    assert "ab+cd/ef==gh12" not in out
+    assert "[REDACTED]" in out

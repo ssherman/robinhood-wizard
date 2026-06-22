@@ -9,7 +9,7 @@ _MASK = "[REDACTED]"
 
 _PATTERNS: list[re.Pattern[str]] = [
     # Bearer tokens
-    re.compile(r"(Bearer\s+)[A-Za-z0-9._\-]+", re.IGNORECASE),
+    re.compile(r"(Bearer\s+)[A-Za-z0-9._\-+=/]+", re.IGNORECASE),
     # JSON-ish "...token": "value"
     re.compile(
         r'("(?:access_token|refresh_token|token|client_secret)"\s*:\s*")[^"]+(")',
@@ -32,10 +32,12 @@ class RedactingFilter(logging.Filter):
     def filter(self, record: logging.LogRecord) -> bool:
         if isinstance(record.msg, str):
             record.msg = redact(record.msg)
-        if record.args:
-            record.args = tuple(
-                redact(a) if isinstance(a, str) else a for a in record.args
-            )
+        if isinstance(record.args, dict):
+            record.args = {
+                k: redact(v) if isinstance(v, str) else v for k, v in record.args.items()
+            }
+        elif record.args:
+            record.args = tuple(redact(a) if isinstance(a, str) else a for a in record.args)
         return True
 
 
