@@ -248,17 +248,33 @@ robinhood-wizard/
 - **Phase 6** — **Autonomous** mode + market-aware scheduler + kill-switch enforcement.
 - **Later (post-v1):** EDGAR + AlphaVantage sources, vector/semantic memory, backtesting, web app.
 
-## 18. Open Risks / Unknowns to Verify Hands-On
+## 18. Open Risks / Unknowns — Resolved Hands-On (Phase 0, 2026-06-22)
 
-1. **MCP API signature drift:** Strands docs show `streamablehttp_client(url, headers=, auth=)`;
-   `mcp` 1.28.0 exposes `streamable_http_client(url, *, http_client=...)`. Pin versions and
-   adapt during Phase 0.
-2. **OAuth `server_url` base vs. full `/mcp/trading` path** for `OAuthClientProvider` discovery
-   (Robinhood's `.well-known` is path-suffixed) — verify in Phase 0.
-3. **Dynamic client registration** with `token_endpoint_auth_method: none` from a non-Claude
-   client — a known custom-client OAuth bug exists (claude-code #65895); verify token exchange.
-4. **Rate limits & scopes** are undocumented — discover empirically; design backoff defensively.
-5. **Token refresh rotation** behavior and undocumented token fields (`mfa_code`, `backup_code`).
+Pinned versions: `strands-agents 1.44.0` (confirmed latest), `mcp 1.28.0`. Verified live
+against the real Robinhood Agentic MCP server under WSL2.
+
+1. **MCP transport signature — RESOLVED.** `mcp` 1.28.0 uses
+   `streamable_http_client(url, *, http_client=...)`; pass an `httpx.AsyncClient(auth=provider)`.
+   The older `streamablehttp_client(headers=, auth=)` form is not used.
+2. **OAuth `server_url` — RESOLVED.** Must be the **full `/mcp/trading` URL**, not the base
+   host. Robinhood's protected-resource metadata advertises the full URL and the SDK validates
+   the configured resource against it; the base host fails with `OAuthFlowError` (resource
+   mismatch).
+3. **OAuth handlers + headless/WSL flow — RESOLVED.** `OAuthClientProvider` requires **async**
+   `redirect_handler(url) -> None` and `callback_handler() -> (code, state)`. Under WSL the
+   browser cannot reach a localhost callback server, so we use a **paste-based** callback (user
+   pastes the redirect URL). Dynamic client registration + PKCE + token exchange + on-disk
+   token storage (`DiskTokenStorage`, 0600) all work; **silent refresh confirmed** (second run
+   needs no browser). The `OAuthCallbackServer` localhost listener is currently unused.
+4. **Strands tool-call API — RESOLVED.** `MCPClient.call_tool_sync(tool_use_id, name, arguments)`
+   requires a `tool_use_id` and returns an `MCPToolResult` dict (`status`, `toolUseId`,
+   `content[]` of `{text|json}`, optional `structuredContent`) — not the raw MCP payload. The
+   `get_accounts` payload nests under `data.accounts`.
+5. **Still open (later phases):** rate limits & scopes (undocumented; design backoff);
+   token-refresh rotation and undocumented token fields (`mfa_code`, `backup_code`); a benign
+   `"Session termination failed: 400"` warning on MCP context exit (Robinhood's terminate
+   endpoint) — cosmetic, to be silenced; account numbers are not yet masked in user-facing
+   output (the tool guide recommends masking all but the last 4 digits).
 
 ## 19. Open-Source Considerations
 
