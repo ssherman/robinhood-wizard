@@ -56,3 +56,49 @@ def test_sync_is_idempotent(tmp_path):
         sync_equity_orders(broker, "ACC1", journal)
         trades = journal.recent_trades()
     assert len(trades) == 1
+
+
+def test_sync_handles_null_quantity(tmp_path):
+    broker = FakeBroker(
+        [
+            {
+                "id": "O2",
+                "symbol": "TSLA",
+                "side": "buy",
+                "quantity": None,
+                "state": "cancelled",
+                "created_at": "2026-01-02",
+            }
+        ]
+    )
+    with SqliteJournal(tmp_path / "wizard.db") as journal:
+        count = sync_equity_orders(broker, "ACC1", journal)
+        trades = journal.recent_trades()
+    assert count == 1
+    assert trades[0].quantity == Decimal("0")
+
+
+def test_sync_skips_order_without_id(tmp_path):
+    orders = [
+        {
+            "symbol": "MSFT",
+            "side": "sell",
+            "quantity": "1",
+            "state": "filled",
+            "created_at": "2026-01-03",
+        },
+        {
+            "id": "O3",
+            "symbol": "GOOG",
+            "side": "buy",
+            "quantity": "3",
+            "state": "filled",
+            "created_at": "2026-01-04",
+        },
+    ]
+    broker = FakeBroker(orders)
+    with SqliteJournal(tmp_path / "wizard.db") as journal:
+        count = sync_equity_orders(broker, "ACC1", journal)
+        trades = journal.recent_trades()
+    assert count == 1
+    assert trades[0].order_id == "O3"
