@@ -10,6 +10,7 @@ dependencies = [
     "mcp>=1.28,<2",
     "pydantic>=2.7",
     "pyyaml>=6.0",
+    "rich>=13",
     "strands-agents>=1.44.0",
     "typer>=0.12",
 ]
