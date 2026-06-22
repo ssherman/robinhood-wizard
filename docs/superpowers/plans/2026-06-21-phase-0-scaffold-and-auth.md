@@ -238,11 +238,18 @@ def test_readme_has_disclaimer():
 
 
 def test_example_files_have_no_real_secrets():
+    import re
+
     for name in (".env.example", "config.example.yaml"):
-        text = (ROOT / name).read_text().lower()
-        # placeholders only — never a real Robinhood/agent token value
-        assert "agent.robinhood.com" not in text or "your-" in text or "<" in text
-        assert "refresh_token" not in text or "your-" in text or "<" in text
+        text = (ROOT / name).read_text()
+        # Placeholders only: no bearer tokens, and no real-looking value (16+ chars)
+        # assigned to a secret field. The public MCP URL is fine to include.
+        assert "Bearer " not in text
+        assert not re.search(
+            r"(access_token|refresh_token|api_key|client_secret)\s*[:=]\s*[\"']?[A-Za-z0-9]{16,}",
+            text,
+            re.IGNORECASE,
+        )
 
 
 def test_security_and_contributing_present():
@@ -1463,7 +1470,8 @@ class FakeBroker:
 def test_app_shows_disclaimer():
     result = runner.invoke(app, ["--help"])
     assert result.exit_code == 0
-    assert "Not financial advice" in result.output
+    # "DISCLAIMER" is a single token — robust against rich help-text line wrapping.
+    assert "DISCLAIMER" in result.output
 
 
 def test_accounts_command_prints_accounts(monkeypatch):
