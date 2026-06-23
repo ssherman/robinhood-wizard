@@ -1,0 +1,110 @@
+# src/rh_wizard/data/robinhood.py
+"""Robinhood as a DataSource (spec §11).
+
+Quotes supply ``PRICE``; fundamentals supply ``AVERAGE_VOLUME`` / ``MARKET_CAP`` /
+``PE_RATIO`` / ``PB_RATIO`` / ``SECTOR`` / ``INDUSTRY`` / 52-week range / ``DIVIDEND_YIELD``.
+Wraps the typed ``BrokerClient``. Fundamentals field names are confirmed live (spec §18);
+the candidate keys below are best-effort until then.
+"""
+
+from __future__ import annotations
+
+from decimal import Decimal, InvalidOperation
+from typing import Any
+
+from rh_wizard.models.market import SymbolData
+from rh_wizard.models.signals import Signal
+
+_PROVIDED: frozenset[Signal] = frozenset(
+    {
+        Signal.PRICE,
+        Signal.AVERAGE_VOLUME,
+        Signal.MARKET_CAP,
+        Signal.PE_RATIO,
+        Signal.PB_RATIO,
+        Signal.SECTOR,
+        Signal.INDUSTRY,
+        Signal.WEEK_52_HIGH,
+        Signal.WEEK_52_LOW,
+        Signal.DIVIDEND_YIELD,
+    }
+)
+
+
+def _to_decimal(value: Any) -> Decimal | None:
+    if value is None:
+        return None
+    try:
+        return Decimal(str(value))
+    except (InvalidOperation, ValueError, TypeError):
+        return None
+
+
+def _first(raw: dict, *keys: str) -> Any:
+    for k in keys:
+        v = raw.get(k)
+        if v not in (None, ""):
+            return v
+    return None
+
+
+def _quote_price(quote: dict) -> Decimal | None:
+    # Re-defined here to keep data/ decoupled from memory/ (different responsibility).
+    for key in ("last_trade_price", "price", "last_price", "mark_price"):
+        v = quote.get(key)
+        if v is not None:
+            return _to_decimal(v)
+    return None
+
+
+def _parse_fundamentals(raw: dict) -> dict[str, Any]:
+    """Map a fundamentals row to SymbolData fields. Candidate keys are confirmed live
+    (spec §18) — Task 8 adjusts them and removes the unused fallbacks."""
+    return {
+        "average_volume": _to_decimal(
+            _first(raw, "average_volume", "average_daily_volume", "volume")
+        ),
+        "market_cap": _to_decimal(_first(raw, "market_cap", "market_capitalization")),
+        "pe_ratio": _to_decimal(_first(raw, "pe_ratio", "price_earnings_ratio", "pe")),
+        "pb_ratio": _to_decimal(_first(raw, "pb_ratio", "price_book_ratio", "pb")),
+        "sector": _first(raw, "sector"),
+        "industry": _first(raw, "industry"),
+        "week_52_high": _to_decimal(
+            _first(raw, "high_52_weeks", "week_52_high", "fifty_two_week_high")
+        ),
+        "week_52_low": _to_decimal(
+            _first(raw, "low_52_weeks", "week_52_low", "fifty_two_week_low")
+        ),
+        "dividend_yield": _to_decimal(_first(raw, "dividend_yield")),
+    }
+
+
+class RobinhoodDataSource:
+    name = "robinhood"
+
+    def __init__(self, broker: Any) -> None:
+        self._broker = broker
+
+    def provides(self) -> set[Signal]:
+        return set(_PROVIDED)
+
+    def fetch(self, symbols: list[str], signals: set[Signal]) -> dict[str, SymbolData]:
+        wanted = signals & _PROVIDED
+        if not symbols or not wanted:
+            return {}
+        fields: dict[str, dict[str, Any]] = {sym: {} for sym in symbols}
+
+        if Signal.PRICE in wanted:
+            for q in self._broker.get_equity_quotes(symbols):
+                sym = q.get("symbol")
+                if sym in fields:
+                    fields[sym]["price"] = _quote_price(q)
+
+        # Any non-price provided signal is sourced from the fundamentals call.
+        if wanted - {Signal.PRICE}:
+            for row in self._broker.get_equity_fundamentals(symbols):
+                sym = row.get("symbol")
+                if sym in fields:
+                    fields[sym].update(_parse_fundamentals(row))
+
+        return {sym: SymbolData(symbol=sym, **vals) for sym, vals in fields.items()}
