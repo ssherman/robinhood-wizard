@@ -8,6 +8,7 @@ import pydantic
 import yaml
 
 from rh_wizard.config import paths
+from rh_wizard.models.risk import RiskCeiling, RiskPolicy
 
 
 class Settings(pydantic.BaseModel):
@@ -22,6 +23,8 @@ class Settings(pydantic.BaseModel):
     # Optional: pin which brokerage account to trade in. Leave unset to auto-select the
     # single account, or (with several) the one flagged agentic_allowed=true.
     account_number: str | None = None
+    risk: RiskPolicy = pydantic.Field(default_factory=RiskPolicy)
+    risk_ceiling: RiskCeiling | None = None
 
 
 def load_settings(path: Path | None = None) -> Settings:

@@ -12,3 +12,21 @@ oauth_client_name: "Robinhood Wizard"
 
 # Optional: pin which brokerage account to use. Leave commented to auto-select.
 # account_number: "YOUR_AGENTIC_ACCOUNT_NUMBER"
+
+# Risk guardrails (global defaults; per-strategy overrides come later). Shown values are
+# the built-in conservative defaults — uncomment/edit to change them.
+# risk:
+#   max_position_pct: 20          # max % of portfolio per position
+#   cash_reserve_pct: 10          # min % kept as cash
+#   max_trades_per_cycle: 5
+#   max_deploy_pct_per_cycle: 30  # max % of portfolio bought per cycle
+#   slippage_band_pct: 0.5        # max % a limit price may sit off the market
+#   min_price: 5                  # liquidity floor: min share price
+#   min_avg_volume: 1000000       # liquidity floor: min avg daily volume
+#   min_market_cap: 1000000000    # liquidity floor: min market cap
+#   drawdown_kill_switch_pct: 15  # halt threshold (enforced in a later phase)
+
+# Optional global hard-ceiling: bounds what any strategy override may set.
+# risk_ceiling:
+#   max_position_pct: 30
+#   min_cash_reserve_pct: 5
