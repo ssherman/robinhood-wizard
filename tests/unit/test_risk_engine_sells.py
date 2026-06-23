@@ -86,3 +86,38 @@ def test_sell_frees_cash_for_a_following_buy():
     result = vet(TradePlan(intents=intents), policy, _portfolio_with_holding(qty="10"), market)
     assert {i.symbol for i in result.approved} == {"AAPL", "MSFT"}
     assert result.rejected == []
+
+
+def test_sell_by_amount_within_holding_approved():
+    plan = TradePlan(
+        intents=[TradeIntent(side="sell", symbol="AAPL", amount="500", limit_price="100")]
+    )
+    result = vet(plan, RiskPolicy(), _portfolio_with_holding(qty="10"), _market())
+    assert [i.symbol for i in result.approved] == ["AAPL"]
+
+
+def test_sell_by_amount_over_holding_rejected():
+    plan = TradePlan(
+        intents=[TradeIntent(side="sell", symbol="AAPL", amount="2000", limit_price="100")]
+    )
+    result = vet(plan, RiskPolicy(), _portfolio_with_holding(qty="10"), _market())
+    assert "held" in result.rejected[0].reason.lower()
+
+
+def test_amount_only_double_sell_rejected():
+    # held_value 1000; two $600 amount-sells: first ok (held_value->400), second 600>400 rejected
+    intents = [
+        TradeIntent(side="sell", symbol="AAPL", amount="600", limit_price="100"),
+        TradeIntent(side="sell", symbol="AAPL", amount="600", limit_price="100"),
+    ]
+    result = vet(
+        TradePlan(intents=intents), RiskPolicy(), _portfolio_with_holding(qty="10"), _market()
+    )
+    assert len(result.approved) == 1
+    assert "held" in result.rejected[0].reason.lower()
+
+
+def test_unsizable_sell_rejected():
+    plan = TradePlan(intents=[TradeIntent(side="sell", symbol="AAPL", limit_price="100")])
+    result = vet(plan, RiskPolicy(), _portfolio_with_holding(qty="10"), _market())
+    assert "size" in result.rejected[0].reason.lower()

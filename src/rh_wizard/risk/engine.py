@@ -109,7 +109,13 @@ def _sell_reason(intent: TradeIntent, ctx: VetContext) -> str | None:
         held = ctx.held_qty.get(intent.symbol, Decimal("0"))
         if intent.quantity > held:
             return f"cannot sell {intent.quantity} of {intent.symbol}; only {held} held"
-    return None
+        return None
+    if intent.amount is not None:
+        held_value = ctx.held_value.get(intent.symbol, Decimal("0"))
+        if intent.amount > held_value:
+            return f"cannot sell ${intent.amount} of {intent.symbol}; only ${held_value} held"
+        return None
+    return f"cannot size sell of {intent.symbol} (need quantity or amount)"
 
 
 def _reason_to_reject(intent: TradeIntent, value: Decimal | None, ctx: VetContext) -> str | None:
@@ -123,6 +129,8 @@ def _reason_to_reject(intent: TradeIntent, value: Decimal | None, ctx: VetContex
     sym = ctx.market.get(intent.symbol)
     if sym is None:
         return f"no market data for {intent.symbol}"
+    if sym.price <= 0:
+        return f"invalid market price for {intent.symbol}"
     deviation = _pct(abs(intent.limit_price - sym.price), sym.price)
     if deviation > ctx.policy.slippage_band_pct:
         return (

@@ -169,3 +169,28 @@ def test_unsizable_buy_rejected():
     plan = TradePlan(intents=[TradeIntent(side="buy", symbol="AAPL", limit_price="100")])
     result = vet(plan, RiskPolicy(), _portfolio(), _market())
     assert "size" in result.rejected[0].reason.lower()
+
+
+def test_zero_price_rejected_not_crash():
+    plan = TradePlan(
+        intents=[TradeIntent(side="buy", symbol="AAPL", quantity="1", limit_price="100")]
+    )
+    result = vet(plan, RiskPolicy(), _portfolio(), _market("AAPL", price="0"))
+    assert result.approved == []
+    assert "market price" in result.rejected[0].reason.lower()
+
+
+def test_negative_price_rejected():
+    plan = TradePlan(
+        intents=[TradeIntent(side="buy", symbol="AAPL", quantity="1", limit_price="100")]
+    )
+    result = vet(plan, RiskPolicy(), _portfolio(), _market("AAPL", price="-5"))
+    assert "market price" in result.rejected[0].reason.lower()
+
+
+def test_zero_limit_price_rejected():
+    plan = TradePlan(
+        intents=[TradeIntent(side="buy", symbol="AAPL", quantity="1", limit_price="0")]
+    )
+    result = vet(plan, RiskPolicy(), _portfolio(), _market())
+    assert "limit" in result.rejected[0].reason.lower()
