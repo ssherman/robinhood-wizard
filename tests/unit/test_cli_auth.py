@@ -24,11 +24,12 @@ def test_app_shows_disclaimer():
     assert "DISCLAIMER" in result.output
 
 
-def test_accounts_command_prints_accounts(monkeypatch):
+def test_accounts_command_masks_account_number(monkeypatch):
     monkeypatch.setattr(auth, "_build_broker", lambda settings: FakeBroker())
     result = runner.invoke(app, ["accounts"])
     assert result.exit_code == 0
-    assert "AG-123" in result.output
+    assert "AG-123" not in result.output  # full number never shown
+    assert "**-123" in result.output  # last-4 visible
 
 
 def test_accounts_command_never_prints_tokens(monkeypatch):

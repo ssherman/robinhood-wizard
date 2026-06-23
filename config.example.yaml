@@ -9,3 +9,6 @@ model_id: "claude-sonnet-4-6"      # your chosen model
 oauth_redirect_host: "localhost"
 oauth_redirect_port: 3030
 oauth_client_name: "Robinhood Wizard"
+
+# Optional: pin which brokerage account to use. Leave commented to auto-select.
+# account_number: "YOUR_AGENTIC_ACCOUNT_NUMBER"

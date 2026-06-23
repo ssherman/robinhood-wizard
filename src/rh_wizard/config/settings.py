@@ -19,6 +19,9 @@ class Settings(pydantic.BaseModel):
     oauth_redirect_host: str = "localhost"
     oauth_redirect_port: int = 3030
     oauth_client_name: str = "Robinhood Wizard"
+    # Optional: pin which brokerage account to trade in. Leave unset to auto-select the
+    # single account, or (with several) the one flagged agentic_allowed=true.
+    account_number: str | None = None
 
 
 def load_settings(path: Path | None = None) -> Settings:
