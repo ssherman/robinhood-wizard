@@ -7,6 +7,7 @@ import logging
 import typer
 
 from rh_wizard.cli.auth import auth_app, run_accounts
+from rh_wizard.cli.market import run_data
 from rh_wizard.cli.portfolio import run_history, run_positions
 from rh_wizard.logging.mcp_noise import silence_session_termination_warning
 from rh_wizard.logging.redaction import install_redaction
@@ -41,6 +42,14 @@ def history(
 ) -> None:
     """Sync broker order history into the journal and show recent trades."""
     run_history(limit, since)
+
+
+@app.command()
+def data(
+    symbols: list[str] = typer.Argument(..., help="Ticker symbols, e.g. AAPL MSFT."),  # noqa: B008
+) -> None:
+    """Resolve and show market data (quotes + fundamentals) for SYMBOLS."""
+    run_data(symbols)
 
 
 def main() -> None:
