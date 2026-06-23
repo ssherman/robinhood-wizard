@@ -104,6 +104,14 @@ def _buy_reason(intent: TradeIntent, value: Decimal | None, ctx: VetContext) -> 
     return None
 
 
+def _sell_reason(intent: TradeIntent, ctx: VetContext) -> str | None:
+    if intent.quantity is not None:
+        held = ctx.held_qty.get(intent.symbol, Decimal("0"))
+        if intent.quantity > held:
+            return f"cannot sell {intent.quantity} of {intent.symbol}; only {held} held"
+    return None
+
+
 def _reason_to_reject(intent: TradeIntent, value: Decimal | None, ctx: VetContext) -> str | None:
     # --- checks that apply to every intent (buy or sell) ---
     if intent.side not in (_BUY, _SELL):
@@ -121,10 +129,10 @@ def _reason_to_reject(intent: TradeIntent, value: Decimal | None, ctx: VetContex
             f"limit price {deviation:.2f}% off market exceeds slippage band "
             f"{ctx.policy.slippage_band_pct}%"
         )
-    # --- buy-only money guardrails ---
+    # --- side-specific guardrails ---
     if intent.side == _BUY:
         return _buy_reason(intent, value, ctx)
-    return None
+    return _sell_reason(intent, ctx)
 
 
 def _apply_approval(intent: TradeIntent, value: Decimal | None, ctx: VetContext) -> None:
@@ -133,6 +141,12 @@ def _apply_approval(intent: TradeIntent, value: Decimal | None, ctx: VetContext)
         ctx.running_cash -= value
         ctx.deployed += value
         ctx.held_value[intent.symbol] = ctx.held_value.get(intent.symbol, Decimal("0")) + value
+    elif intent.side == _SELL and value is not None:
+        ctx.running_cash += value
+        ctx.held_value[intent.symbol] = ctx.held_value.get(intent.symbol, Decimal("0")) - value
+        ctx.held_qty[intent.symbol] = ctx.held_qty.get(intent.symbol, Decimal("0")) - (
+            intent.quantity or Decimal("0")
+        )
 
 
 def vet(
