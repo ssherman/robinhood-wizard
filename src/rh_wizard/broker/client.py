@@ -65,6 +65,18 @@ class BrokerClient:
             quotes.append(inner if isinstance(inner, dict) else item)
         return quotes
 
+    def get_equity_fundamentals(self, symbols: list[str]) -> list[dict]:
+        """Return one fundamentals dict per symbol (market cap, avg volume, P/E, P/B,
+        sector/industry, 52-wk range, dividend).
+
+        Payload shape unconfirmed until live verification (Phase 3, spec §18) — defensively
+        unwrap ``data.results``/``data.fundamentals``, tolerating a flat list.
+        """
+        if not symbols:
+            return []
+        payload = self._call("get_equity_fundamentals", symbols=list(symbols))
+        return _extract_list(payload, "results") or _extract_list(payload, "fundamentals")
+
     def get_equity_orders(
         self,
         account_number: str,
