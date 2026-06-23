@@ -52,7 +52,7 @@ def _quote_price(quote: dict) -> Decimal | None:
     # Re-defined here to keep data/ decoupled from memory/ (different responsibility).
     for key in ("last_trade_price", "price", "last_price", "mark_price"):
         v = quote.get(key)
-        if v is not None:
+        if v not in (None, ""):
             return _to_decimal(v)
     return None
 

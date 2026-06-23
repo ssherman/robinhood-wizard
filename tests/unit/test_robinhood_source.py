@@ -80,8 +80,36 @@ def test_fetch_empty_symbols_returns_empty():
 def test_fetch_leaves_missing_facts_as_none():
     class ThinBroker(FakeBroker):
         def get_equity_fundamentals(self, symbols):
+            self.fundamentals_calls += 1
             return [{"symbol": s, "market_cap": "3.0E12"} for s in symbols]  # no pe_ratio
 
     data = RobinhoodDataSource(ThinBroker()).fetch(["AAPL"], {Signal.MARKET_CAP, Signal.PE_RATIO})
     assert data["AAPL"].market_cap == Decimal("3.0E12")
     assert data["AAPL"].pe_ratio is None
+
+
+def test_fetch_coerces_bad_values_and_alternate_keys():
+    class OddBroker(FakeBroker):
+        def get_equity_fundamentals(self, symbols):
+            self.fundamentals_calls += 1
+            # market_cap is non-numeric -> None; pe comes via an alternate key name.
+            return [
+                {"symbol": s, "market_cap": "N/A", "price_earnings_ratio": "30"} for s in symbols
+            ]
+
+    data = RobinhoodDataSource(OddBroker()).fetch(["AAPL"], {Signal.MARKET_CAP, Signal.PE_RATIO})
+    assert data["AAPL"].market_cap is None  # "N/A" defensively coerced to None
+    assert data["AAPL"].pe_ratio == Decimal("30")  # alternate key "price_earnings_ratio" resolved
+
+
+def test_fetch_returns_entry_even_when_broker_omits_a_symbol():
+    class PartialBroker(FakeBroker):
+        def get_equity_quotes(self, symbols):
+            self.quote_calls += 1
+            # Only AAPL comes back; MSFT is omitted (e.g. unknown ticker).
+            return [{"symbol": "AAPL", "last_trade_price": "190.00"}]
+
+    data = RobinhoodDataSource(PartialBroker()).fetch(["AAPL", "MSFT"], {Signal.PRICE})
+    assert set(data) == {"AAPL", "MSFT"}  # every requested symbol is present
+    assert data["AAPL"].price == Decimal("190.00")
+    assert data["MSFT"].price is None  # omitted by broker -> a gap (degrade-and-report)
