@@ -3,8 +3,8 @@
 
 Quotes supply ``PRICE``; fundamentals supply ``AVERAGE_VOLUME`` / ``MARKET_CAP`` /
 ``PE_RATIO`` / ``PB_RATIO`` / ``SECTOR`` / ``INDUSTRY`` / 52-week range / ``DIVIDEND_YIELD``.
-Wraps the typed ``BrokerClient``. Fundamentals field names are confirmed live (spec §18);
-the candidate keys below are best-effort until then.
+Wraps the typed ``BrokerClient``. Fundamentals field names were confirmed live against the
+real payload (spec §18).
 """
 
 from __future__ import annotations

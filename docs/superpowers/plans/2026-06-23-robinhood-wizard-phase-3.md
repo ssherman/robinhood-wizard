@@ -928,6 +928,13 @@ class SignalResolver:
         )
 ```
 
+> **Correction (applied during implementation):** the snippet above derives `unmet_signals`
+> from `needed - provided`, but `provided` is only updated *after* a successful fetch — so a
+> source whose `fetch` raises would wrongly mark its covered signal as unmet, contradicting
+> `test_resolve_degrades_on_source_error`. The shipped `data/resolver.py` instead tracks an
+> `attempted` set updated *before* the fetch and computes `unmet_signals = needed - attempted`
+> (and drops the unused `provided` variable). Prefer the shipped version if re-deriving this.
+
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `uv run pytest tests/unit/test_signal_resolver.py -v`
