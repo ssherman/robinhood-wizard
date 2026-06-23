@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from decimal import Decimal, InvalidOperation
 
-from rh_wizard.cli.render import mask_account
+from rh_wizard.masking import mask_account
 from rh_wizard.models.portfolio import PortfolioState, Position
 
 

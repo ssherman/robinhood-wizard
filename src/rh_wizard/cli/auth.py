@@ -11,10 +11,10 @@ import typer
 from rh_wizard.auth.oauth import build_oauth_provider
 from rh_wizard.auth.token_storage import DiskTokenStorage
 from rh_wizard.broker.client import make_broker_client
-from rh_wizard.cli.render import mask_account
 from rh_wizard.config import paths
 from rh_wizard.config.settings import Settings, load_settings
 from rh_wizard.logging.redaction import redact
+from rh_wizard.masking import mask_account
 
 auth_app = typer.Typer(help="Authenticate with the Robinhood Agentic MCP server.")
 

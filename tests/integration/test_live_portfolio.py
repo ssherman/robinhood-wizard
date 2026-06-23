@@ -19,8 +19,8 @@ pytestmark = pytest.mark.skipif(
 
 def test_reconcile_and_history_live(tmp_path):
     from rh_wizard.cli import auth
-    from rh_wizard.cli.render import mask_account
     from rh_wizard.config.settings import load_settings
+    from rh_wizard.masking import mask_account
     from rh_wizard.memory.journal import SqliteJournal
     from rh_wizard.memory.portfolio import (
         enrich_with_quotes,
