@@ -1,18 +1,8 @@
-"""User-facing rendering helpers (terminal output).
-
-``mask_account`` is presentation masking — it shows only the last few characters of an
-account number, per the Robinhood tool guide. This is separate from
-``rh_wizard.logging.redaction`` (which scrubs secrets from logs).
-"""
+"""User-facing rendering helpers (terminal output) built on rich."""
 
 from __future__ import annotations
 
-
-def mask_account(value: str, visible: int = 4) -> str:
-    s = str(value)
-    if len(s) <= visible:
-        return s
-    return "*" * (len(s) - visible) + s[-visible:]
+from rh_wizard.masking import mask_account
 
 
 def render_to_str(renderable, width: int = 100) -> str:

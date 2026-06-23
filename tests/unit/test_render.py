@@ -1,18 +1,6 @@
 from decimal import Decimal
 
-from rh_wizard.cli.render import fmt_money, fmt_num, fmt_pct, mask_account, render_to_str
-
-
-def test_masks_all_but_last_four():
-    assert mask_account("ACC123456") == "*****3456"
-
-
-def test_short_values_unchanged():
-    assert mask_account("12") == "12"
-
-
-def test_coerces_non_str():
-    assert mask_account(1234567) == "***4567"
+from rh_wizard.cli.render import fmt_money, fmt_num, fmt_pct, render_to_str
 
 
 def test_render_to_str_outputs_text():
