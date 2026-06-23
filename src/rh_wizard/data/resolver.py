@@ -30,20 +30,19 @@ class SignalResolver:
     def resolve(self, universe: list[str], needed: set[Signal]) -> MarketContext:
         symbols: dict[str, SymbolData] = {sym: SymbolData(symbol=sym) for sym in universe}
         notes: list[str] = []
-        provided: set[Signal] = set()
         attempted: set[Signal] = set()
 
         for source in self._sources:
             covers = source.provides() & needed
             if not covers:
                 continue
+            # set BEFORE fetch: a source error must not misclassify its signal as unmet
             attempted |= covers
             try:
                 fetched = source.fetch(list(universe), covers)
             except Exception as exc:  # degrade-and-report; the cycle decides whether to abort
                 notes.append(f"{source.name} fetch failed: {exc}")
                 continue
-            provided |= covers
             for sym, data in fetched.items():
                 if sym in symbols:
                     symbols[sym] = _merge(symbols[sym], data)
