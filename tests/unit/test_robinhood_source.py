@@ -88,18 +88,16 @@ def test_fetch_leaves_missing_facts_as_none():
     assert data["AAPL"].pe_ratio is None
 
 
-def test_fetch_coerces_bad_values_and_alternate_keys():
+def test_fetch_coerces_non_numeric_fundamentals_to_none():
     class OddBroker(FakeBroker):
         def get_equity_fundamentals(self, symbols):
             self.fundamentals_calls += 1
-            # market_cap is non-numeric -> None; pe comes via an alternate key name.
-            return [
-                {"symbol": s, "market_cap": "N/A", "price_earnings_ratio": "30"} for s in symbols
-            ]
+            # Robinhood occasionally returns blanks/dashes for a field -> coerce to None.
+            return [{"symbol": s, "market_cap": "N/A", "pe_ratio": "30"} for s in symbols]
 
     data = RobinhoodDataSource(OddBroker()).fetch(["AAPL"], {Signal.MARKET_CAP, Signal.PE_RATIO})
     assert data["AAPL"].market_cap is None  # "N/A" defensively coerced to None
-    assert data["AAPL"].pe_ratio == Decimal("30")  # alternate key "price_earnings_ratio" resolved
+    assert data["AAPL"].pe_ratio == Decimal("30")  # confirmed key resolves
 
 
 def test_fetch_returns_entry_even_when_broker_omits_a_symbol():

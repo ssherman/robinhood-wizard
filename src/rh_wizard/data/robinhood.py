@@ -58,23 +58,20 @@ def _quote_price(quote: dict) -> Decimal | None:
 
 
 def _parse_fundamentals(raw: dict) -> dict[str, Any]:
-    """Map a fundamentals row to SymbolData fields. Candidate keys are confirmed live
-    (spec §18) — Task 8 adjusts them and removes the unused fallbacks."""
+    """Map a Robinhood fundamentals row to SymbolData fields.
+
+    Field names confirmed live against the real ``get_equity_fundamentals`` payload
+    (spec §18, 2026-06-23). A missing key degrades to ``None`` (a per-symbol gap).
+    """
     return {
-        "average_volume": _to_decimal(
-            _first(raw, "average_volume", "average_daily_volume", "volume")
-        ),
-        "market_cap": _to_decimal(_first(raw, "market_cap", "market_capitalization")),
-        "pe_ratio": _to_decimal(_first(raw, "pe_ratio", "price_earnings_ratio", "pe")),
-        "pb_ratio": _to_decimal(_first(raw, "pb_ratio", "price_book_ratio", "pb")),
+        "average_volume": _to_decimal(_first(raw, "average_volume")),
+        "market_cap": _to_decimal(_first(raw, "market_cap")),
+        "pe_ratio": _to_decimal(_first(raw, "pe_ratio")),
+        "pb_ratio": _to_decimal(_first(raw, "pb_ratio")),
         "sector": _first(raw, "sector"),
         "industry": _first(raw, "industry"),
-        "week_52_high": _to_decimal(
-            _first(raw, "high_52_weeks", "week_52_high", "fifty_two_week_high")
-        ),
-        "week_52_low": _to_decimal(
-            _first(raw, "low_52_weeks", "week_52_low", "fifty_two_week_low")
-        ),
+        "week_52_high": _to_decimal(_first(raw, "high_52_weeks")),
+        "week_52_low": _to_decimal(_first(raw, "low_52_weeks")),
         "dividend_yield": _to_decimal(_first(raw, "dividend_yield")),
     }
 
