@@ -39,7 +39,7 @@ def test_data_command_renders_resolved_market_data(monkeypatch, tmp_path):
     assert "Technology" in result.output  # sector
 
 
-def test_data_command_reports_unmet_and_uppercases(monkeypatch, tmp_path):
+def test_data_command_uppercases_symbol(monkeypatch, tmp_path):
     monkeypatch.setenv("RH_WIZARD_HOME", str(tmp_path))
     monkeypatch.setattr(auth, "_build_broker", lambda settings: FakeBroker())
     result = runner.invoke(app, ["data", "msft"])
