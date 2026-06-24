@@ -105,3 +105,25 @@ def test_cycle_includes_held_symbols_in_universe():
         # MSFT (new) approved; AAPL held so not bought
         assert [i.symbol for i in result.vetted.approved] == ["MSFT"]
         assert "AAPL" in result.market.symbols  # held symbol was resolved
+
+
+def test_cycle_aborts_when_research_raises():
+    from rh_wizard.core.cycle import run_cycle
+    from rh_wizard.memory.journal import SqliteJournal
+    from rh_wizard.models.signals import Signal
+    from rh_wizard.models.strategy import Strategy
+
+    class BoomResearcher:
+        def research(self, strategy, market, portfolio):
+            raise RuntimeError("llm down")
+
+    strategy = Strategy(id="m", name="M", universe=["AAPL"], signals_needed={Signal.PRICE})
+    with SqliteJournal(":memory:") as journal:
+        deps = _deps(journal)
+        deps.researcher = BoomResearcher()
+        with deps.broker:
+            result = run_cycle(strategy, deps)
+        assert result.run.status == "aborted"
+        assert "llm down" in result.run.note
+        assert result.vetted is None
+        assert journal.recent_runs()[0].status == "aborted"
