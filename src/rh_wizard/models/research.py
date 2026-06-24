@@ -3,15 +3,15 @@ with a thesis and conviction; the planner turns this into a TradePlan."""
 
 from __future__ import annotations
 
-from decimal import Decimal
-
 import pydantic
+
+from rh_wizard.models._types import LlmDecimal
 
 
 class Candidate(pydantic.BaseModel):
     symbol: str
     thesis: str = ""
-    conviction: Decimal | None = None  # 0..1, optional
+    conviction: LlmDecimal | None = None  # 0..1, optional
 
 
 class ResearchReport(pydantic.BaseModel):

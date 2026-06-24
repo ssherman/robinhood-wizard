@@ -1,9 +1,24 @@
 from typer.testing import CliRunner
 
 from rh_wizard.cli import auth
+from rh_wizard.cli import run as run_module
 from rh_wizard.cli.app import app
+from rh_wizard.models.plan import TradeIntent, TradePlan
+from rh_wizard.models.research import Candidate, ResearchReport
 
 runner = CliRunner()
+
+
+class FakeStructuredLlm:
+    def generate(self, output_model, prompt, system=""):
+        if output_model is ResearchReport:
+            return ResearchReport(candidates=[Candidate(symbol="AAPL", thesis="fit")], summary="ok")
+        if output_model is TradePlan:
+            return TradePlan(
+                intents=[TradeIntent(side="buy", symbol="AAPL", quantity="1", limit_price="100")],
+                rationale="probe",
+            )
+        raise AssertionError(f"unexpected output_model {output_model}")
 
 
 class FakeBroker:
@@ -52,9 +67,10 @@ def test_run_executes_dryrun_cycle_and_renders(monkeypatch, tmp_path):
     monkeypatch.setenv("RH_WIZARD_HOME", str(tmp_path))
     _write_strategy(tmp_path)
     monkeypatch.setattr(auth, "_build_broker", lambda settings: FakeBroker())
+    monkeypatch.setattr(run_module, "_build_llm", lambda settings: FakeStructuredLlm())
     result = runner.invoke(app, ["run", "demo"])
     assert result.exit_code == 0
-    assert "AAPL" in result.output  # 1-share probe buy proposed
+    assert "AAPL" in result.output  # LlmResearcher proposes AAPL; approved by risk engine
     assert "DryRun" in result.output
     assert "no orders" in result.output.lower()
 

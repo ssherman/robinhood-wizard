@@ -6,7 +6,7 @@ from rh_wizard.config.settings import Settings, load_settings
 def test_defaults_when_no_file(tmp_path):
     s = load_settings(tmp_path / "missing.yaml")
     assert s.robinhood_mcp_url == "https://agent.robinhood.com/mcp/trading"
-    assert s.model_provider == "anthropic"
+    assert s.model_provider == "openai"
     assert s.oauth_redirect_port == 3030
 
 

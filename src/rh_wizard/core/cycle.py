@@ -78,15 +78,24 @@ def run_cycle(
     needed = set(strategy.signals_needed) | set(RISK_SIGNALS)
     market = deps.resolver.resolve(universe, needed)
 
-    # Stages 6-7 (RESEARCH, PLAN) — stubs in Phase 4a.
-    report = deps.researcher.research(strategy, market, portfolio)
-    plan = deps.planner.plan(strategy, report, market, portfolio)
-
-    # Stage 8 (RISK ENGINE) — pure, deterministic (Phase 2).
-    policy = build_effective_policy(
-        deps.settings.risk, deps.settings.risk_ceiling, strategy.risk_overrides
-    )
-    vetted = vet(plan, policy, portfolio, market.to_symbol_risk())
+    # Stages 6-8 (RESEARCH, PLAN, RISK) — an agentic-stage failure aborts cleanly (spec §13).
+    try:
+        report = deps.researcher.research(strategy, market, portfolio)
+        plan = deps.planner.plan(strategy, report, market, portfolio)
+        policy = build_effective_policy(
+            deps.settings.risk, deps.settings.risk_ceiling, strategy.risk_overrides
+        )
+        vetted = vet(plan, policy, portfolio, market.to_symbol_risk())
+    except Exception as exc:
+        run = run.model_copy(
+            update={
+                "status": "aborted",
+                "finished_at": _now(),
+                "note": f"research/plan failed: {exc}",
+            }
+        )
+        deps.journal.record_run(run)
+        return CycleResult(run=run, portfolio=portfolio, market=market)
 
     # Stage 9: DryRun — no execution (Phase 5 adds the executor). Stage 11: JOURNAL.
     run = run.model_copy(update={"status": "completed", "finished_at": _now()})

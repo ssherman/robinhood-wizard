@@ -13,9 +13,16 @@ from rh_wizard.data.resolver import SignalResolver
 from rh_wizard.data.robinhood import RobinhoodDataSource
 from rh_wizard.memory.journal import SqliteJournal
 from rh_wizard.models.cycle import CycleMode
-from rh_wizard.planning.stub import StubPlanner
-from rh_wizard.research.stub import StubResearcher
+from rh_wizard.planning.llm import LlmPlanner
+from rh_wizard.research.llm import LlmResearcher
 from rh_wizard.strategies.registry import StrategyNotFoundError, StrategyRegistry
+
+
+def _build_llm(settings):
+    """Build the research/plan LLM (real path; patched in tests)."""
+    from rh_wizard.llm.provider import build_llm
+
+    return build_llm(settings)
 
 
 def list_strategies() -> None:
@@ -40,12 +47,13 @@ def run_strategy(strategy_id: str) -> None:
     broker = auth._build_broker(settings)
     resolver = SignalResolver([RobinhoodDataSource(broker)])
     with broker, SqliteJournal(paths.db_path()) as journal:
+        llm = _build_llm(settings)
         deps = CycleDeps(
             broker=broker,
             settings=settings,
             resolver=resolver,
-            researcher=StubResearcher(),
-            planner=StubPlanner(),
+            researcher=LlmResearcher(llm),
+            planner=LlmPlanner(llm),
             journal=journal,
         )
         result = run_cycle(strategy, deps, CycleMode.DRY_RUN)
