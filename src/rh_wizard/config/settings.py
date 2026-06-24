@@ -31,7 +31,7 @@ def load_settings(path: Path | None = None) -> Settings:
     cfg_path = path if path is not None else paths.config_path()
     if not cfg_path.exists():
         return Settings()
-    data = yaml.safe_load(cfg_path.read_text()) or {}
+    data = yaml.safe_load(cfg_path.read_text(encoding="utf-8")) or {}
     try:
         return Settings(**data)
     except pydantic.ValidationError as exc:

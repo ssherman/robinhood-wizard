@@ -10,6 +10,8 @@ import sqlite3
 from decimal import Decimal
 from pathlib import Path
 
+from rh_wizard.models.cycle import CycleRun
+from rh_wizard.models.plan import TradeIntent, VettedPlan
 from rh_wizard.models.trade import TradeRecord
 
 _SCHEMA = """
@@ -22,6 +24,28 @@ CREATE TABLE IF NOT EXISTS trades (
     state      TEXT NOT NULL,
     created_at TEXT NOT NULL,
     source     TEXT
+);
+CREATE TABLE IF NOT EXISTS runs (
+    run_id      TEXT PRIMARY KEY,
+    strategy_id TEXT NOT NULL,
+    mode        TEXT NOT NULL,
+    started_at  TEXT NOT NULL,
+    finished_at TEXT,
+    status      TEXT NOT NULL,
+    note        TEXT
+);
+CREATE TABLE IF NOT EXISTS plan_intents (
+    run_id      TEXT NOT NULL,
+    seq         INTEGER NOT NULL,
+    bucket      TEXT NOT NULL,
+    side        TEXT NOT NULL,
+    symbol      TEXT NOT NULL,
+    quantity    TEXT,
+    amount      TEXT,
+    limit_price TEXT,
+    rationale   TEXT,
+    reason      TEXT,
+    PRIMARY KEY (run_id, seq)
 );
 """
 
@@ -71,6 +95,73 @@ class SqliteJournal:
         cur = self._conn.execute("SELECT * FROM trades ORDER BY created_at DESC LIMIT ?", (limit,))
         return [_row_to_trade(row) for row in cur.fetchall()]
 
+    def record_run(self, run: CycleRun) -> None:
+        self._conn.execute(
+            """
+            INSERT INTO runs (run_id, strategy_id, mode, started_at, finished_at, status, note)
+            VALUES (:run_id, :strategy_id, :mode, :started_at, :finished_at, :status, :note)
+            ON CONFLICT(run_id) DO UPDATE SET
+                finished_at = excluded.finished_at,
+                status = excluded.status,
+                note = excluded.note;
+            """,
+            {
+                "run_id": run.run_id,
+                "strategy_id": run.strategy_id,
+                "mode": run.mode,
+                "started_at": run.started_at,
+                "finished_at": run.finished_at,
+                "status": run.status,
+                "note": run.note,
+            },
+        )
+        self._conn.commit()
+
+    def record_plan(self, run_id: str, vetted: VettedPlan) -> None:
+        self._conn.execute("DELETE FROM plan_intents WHERE run_id = ?", (run_id,))
+        rows = []
+        seq = 0
+        for intent in vetted.approved:
+            rows.append(_intent_row(run_id, seq, "approved", intent, None))
+            seq += 1
+        for rejected in vetted.rejected:
+            rows.append(_intent_row(run_id, seq, "rejected", rejected.intent, rejected.reason))
+            seq += 1
+        if rows:
+            self._conn.executemany(
+                """
+                INSERT INTO plan_intents
+                    (run_id, seq, bucket, side, symbol, quantity, amount, limit_price,
+                     rationale, reason)
+                VALUES
+                    (:run_id, :seq, :bucket, :side, :symbol, :quantity, :amount, :limit_price,
+                     :rationale, :reason);
+                """,
+                rows,
+            )
+        self._conn.commit()
+
+    def recent_runs(self, limit: int = 50) -> list[CycleRun]:
+        cur = self._conn.execute("SELECT * FROM runs ORDER BY started_at DESC LIMIT ?", (limit,))
+        return [
+            CycleRun(
+                run_id=row["run_id"],
+                strategy_id=row["strategy_id"],
+                mode=row["mode"],
+                started_at=row["started_at"],
+                finished_at=row["finished_at"],
+                status=row["status"],
+                note=row["note"] or "",
+            )
+            for row in cur.fetchall()
+        ]
+
+    def plan_intents(self, run_id: str) -> list[dict]:
+        cur = self._conn.execute(
+            "SELECT * FROM plan_intents WHERE run_id = ? ORDER BY seq", (run_id,)
+        )
+        return [dict(row) for row in cur.fetchall()]
+
     def close(self) -> None:
         self._conn.close()
 
@@ -86,3 +177,20 @@ def _row_to_trade(row: sqlite3.Row) -> TradeRecord:
         created_at=row["created_at"],
         source=row["source"],
     )
+
+
+def _intent_row(
+    run_id: str, seq: int, bucket: str, intent: TradeIntent, reason: str | None
+) -> dict:
+    return {
+        "run_id": run_id,
+        "seq": seq,
+        "bucket": bucket,
+        "side": intent.side,
+        "symbol": intent.symbol,
+        "quantity": None if intent.quantity is None else str(intent.quantity),
+        "amount": None if intent.amount is None else str(intent.amount),
+        "limit_price": None if intent.limit_price is None else str(intent.limit_price),
+        "rationale": intent.rationale,
+        "reason": reason,
+    }

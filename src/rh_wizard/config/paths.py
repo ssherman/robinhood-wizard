@@ -29,6 +29,10 @@ def db_path() -> Path:
     return home_dir() / "wizard.db"
 
 
+def strategies_dir() -> Path:
+    return home_dir() / "strategies"
+
+
 def ensure_home() -> Path:
     d = home_dir()
     d.mkdir(parents=True, exist_ok=True, mode=0o700)
