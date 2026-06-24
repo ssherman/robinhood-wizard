@@ -86,3 +86,31 @@ def render_history(trades) -> str:
             t.source or "-",
         )
     return render_to_str(table)
+
+
+def render_market_context(context) -> str:
+    """Render a MarketContext as a table plus any unmet-signal / note lines."""
+    from rich.table import Table
+
+    table = Table(title="Market data")
+    table.add_column("Symbol")
+    table.add_column("Price", justify="right")
+    table.add_column("Avg Vol", justify="right")
+    table.add_column("Mkt Cap", justify="right")
+    table.add_column("P/E", justify="right")
+    table.add_column("Sector")
+    for sym, d in context.symbols.items():
+        table.add_row(
+            sym,
+            fmt_money(d.price),
+            fmt_num(d.average_volume),
+            fmt_money(d.market_cap),
+            fmt_num(d.pe_ratio),
+            d.sector or "-",
+        )
+    body = render_to_str(table) if context.symbols else "No symbols.\n"
+    if context.unmet_signals:
+        body += "Unmet signals: " + ", ".join(s.value for s in context.unmet_signals) + "\n"
+    for note in context.notes:
+        body += f"Note: {note}\n"
+    return body

@@ -313,6 +313,35 @@ match these):
    whose `cursor` query param drives `_next_cursor` (empty lists for this account, but the
    nesting/keys match).
 
+### Phase 3 fundamentals shape — RESOLVED live (2026-06-23)
+
+Verified against the real Robinhood Agentic MCP server via
+`RH_WIZARD_LIVE=1 uv run pytest tests/integration/test_live_fundamentals.py -v -s`
+(AAPL, MSFT). The Phase 3 data layer (`data/robinhood.py`, `data/resolver.py`) parses these
+confirmed shapes; all 10 provided signals resolved for both symbols (`unmet_signals == []`,
+`notes == []`).
+
+1. **`get_equity_fundamentals` — CONFIRMED.** Payload is `data.results[]`, one object per
+   symbol keyed by `symbol`; numeric values arrive as strings. The fields the Robinhood
+   source reads (all confirmed present):
+   - `average_volume` — the long-run average. The payload ALSO carries `volume` (latest
+     single-day figure — a *different* meaning, do not use as a fallback),
+     `average_volume_2_weeks`, `average_volume_30_days`, `overnight_volume`.
+   - `market_cap`, `pe_ratio`, `pb_ratio`, `dividend_yield`.
+   - `high_52_weeks` / `low_52_weeks` (each has an unused `*_date` sibling).
+   - `sector`, `industry` — Robinhood's OWN taxonomy, NOT GICS (e.g. AAPL → sector
+     "Electronic Technology", industry "Telecommunications Equipment"; MSFT → "Technology
+     Services" / "Packaged Software"). Strategies must not assume GICS sector names.
+   Field names were confirmed exactly, so `_parse_fundamentals` reads them directly (the
+   earlier speculative fallback keys were dropped); a missing key degrades to `None`.
+2. **Available but not consumed in v1** (same payload, behind the same source if a later
+   strategy needs them): `float`, `shares_outstanding`, `dividend_per_share`,
+   `ex_dividend_date`/`payable_date`/`record_date`, `thirty_day_sec_yield`, `description`,
+   `ceo`, `num_employees`, `year_founded`, `headquarters_city`/`headquarters_state`,
+   `open`/`high`/`low`, `market_date`, `bounds`.
+3. **Quotes `PRICE` — reconfirmed.** `get_equity_quotes` `last_trade_price` resolves the
+   `PRICE` signal (AAPL 299.14, MSFT 373.06 at verification time).
+
 ## 19. Open-Source Considerations
 
 The project is intended to be released publicly under the **MIT license**. This is a design

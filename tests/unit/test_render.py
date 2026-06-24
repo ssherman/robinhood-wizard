@@ -24,3 +24,30 @@ def test_formatters_format_decimals():
     # 12.349 rounds unambiguously to 12.35 (avoid the half-even tie at .345).
     assert fmt_pct(Decimal("12.349")) == "12.35%"
     assert fmt_num(Decimal("10")) == "10"
+
+
+def test_render_market_context_table_and_metadata_lines():
+    from decimal import Decimal
+
+    from rh_wizard.cli.render import render_market_context
+    from rh_wizard.models.market import MarketContext, SymbolData
+    from rh_wizard.models.signals import Signal
+
+    ctx = MarketContext(
+        symbols={"AAPL": SymbolData(symbol="AAPL", price=Decimal("190"), sector="Technology")},
+        unmet_signals=[Signal.EARNINGS],
+        notes=["robinhood fetch failed: boom"],
+    )
+    out = render_market_context(ctx)
+    assert "AAPL" in out
+    assert "$190.00" in out
+    assert "Technology" in out
+    assert "Unmet signals: earnings" in out  # Signal.EARNINGS.value
+    assert "robinhood fetch failed: boom" in out  # note line
+
+
+def test_render_market_context_empty_symbols():
+    from rh_wizard.cli.render import render_market_context
+    from rh_wizard.models.market import MarketContext
+
+    assert "No symbols." in render_market_context(MarketContext())
