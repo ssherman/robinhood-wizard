@@ -48,3 +48,19 @@ def test_research_builds_prompt_and_returns_report():
     assert "buy quality tech" in fake.last_prompt  # intent in prompt
     assert "AAPL" in fake.last_prompt  # resolved symbol in prompt
     assert fake.last_system  # non-empty system prompt
+
+
+def test_fmt_symbol_missing_symbol():
+    from rh_wizard.research.llm import _fmt_symbol
+
+    ctx = MarketContext(symbols={})
+    assert "(no market data resolved)" in _fmt_symbol("TSLA", ctx)
+
+
+def test_fmt_symbol_partial_data():
+    from rh_wizard.research.llm import _fmt_symbol
+
+    ctx = MarketContext(symbols={"X": SymbolData(symbol="X", price=None, sector="Tech")})
+    out = _fmt_symbol("X", ctx)
+    assert "None" not in out  # price=None must never appear
+    assert "sector=Tech" in out  # other resolved fields still shown

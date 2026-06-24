@@ -24,7 +24,9 @@ def _fmt_symbol(symbol: str, market: MarketContext) -> str:
     d = market.symbols.get(symbol)
     if d is None:
         return f"- {symbol}: (no market data resolved)"
-    parts = [f"price={d.price}"]
+    parts = []
+    if d.price is not None:
+        parts.append(f"price={d.price}")
     if d.pe_ratio is not None:
         parts.append(f"P/E={d.pe_ratio}")
     if d.market_cap is not None:
@@ -33,6 +35,8 @@ def _fmt_symbol(symbol: str, market: MarketContext) -> str:
         parts.append(f"sector={d.sector}")
     if d.industry:
         parts.append(f"industry={d.industry}")
+    if not parts:
+        return f"- {symbol}: (no market data resolved)"
     return f"- {symbol}: " + ", ".join(parts)
 
 
