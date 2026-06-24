@@ -9,6 +9,7 @@ import typer
 from rh_wizard.cli.auth import auth_app, run_accounts
 from rh_wizard.cli.market import run_data
 from rh_wizard.cli.portfolio import run_history, run_positions
+from rh_wizard.cli.run import list_strategies, run_strategy
 from rh_wizard.logging.mcp_noise import silence_session_termination_warning
 from rh_wizard.logging.redaction import install_redaction
 
@@ -50,6 +51,20 @@ def data(
 ) -> None:
     """Resolve and show market data (quotes + fundamentals) for SYMBOLS."""
     run_data(symbols)
+
+
+@app.command()
+def strategies() -> None:
+    """List strategies available in ~/.rh-wizard/strategies/."""
+    list_strategies()
+
+
+@app.command()
+def run(
+    strategy_id: str = typer.Argument(..., help="Strategy id (yaml filename stem)."),  # noqa: B008
+) -> None:
+    """Run one DryRun cycle for STRATEGY_ID — proposes a vetted plan, places no orders."""
+    run_strategy(strategy_id)
 
 
 def main() -> None:
