@@ -30,5 +30,5 @@ class StrategyRegistry:
         path = self._dir / f"{strategy_id}.yaml"
         if not path.is_file():
             raise StrategyNotFoundError(f"Strategy '{strategy_id}' not found in {self._dir}")
-        data = yaml.safe_load(path.read_text()) or {}
+        data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
         return Strategy(**data)

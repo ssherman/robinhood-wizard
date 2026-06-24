@@ -117,7 +117,7 @@ def render_market_context(context) -> str:
 
 
 def render_cycle_result(result) -> str:
-    """Render a CycleResult (run header + portfolio + research + vetted plan + DryRun footer)."""
+    """Render a CycleResult (run header + portfolio + research + data gaps + vetted plan)."""
     from rich.table import Table
 
     run = result.run
@@ -132,6 +132,14 @@ def render_cycle_result(result) -> str:
     if result.report is not None and result.report.summary:
         lines.append(f"Research: {result.report.summary}")
 
+    # Surface data-resolution gaps so a partial-data run is visible to the operator (spec §13).
+    if result.market is not None:
+        if result.market.unmet_signals:
+            unmet = ", ".join(s.value for s in result.market.unmet_signals)
+            lines.append(f"Unmet signals: {unmet}")
+        for note in result.market.notes:
+            lines.append(f"Data note: {note}")
+
     vetted = result.vetted
     if vetted is not None and vetted.approved:
         table = Table(title="Proposed trades (DryRun — approved)")
@@ -145,13 +153,14 @@ def render_cycle_result(result) -> str:
                 i.side, i.symbol, fmt_num(i.quantity), fmt_money(i.limit_price), i.rationale or "-"
             )
         lines.append(render_to_str(table).rstrip("\n"))
-    else:
-        lines.append("No trades proposed.")
 
     if vetted is not None and vetted.rejected:
         lines.append("Rejected:")
         for r in vetted.rejected:
             lines.append(f"  {r.intent.side} {r.intent.symbol}: {r.reason}")
+
+    if vetted is None or (not vetted.approved and not vetted.rejected):
+        lines.append("No trades proposed.")
 
     lines.append("DryRun — no orders placed.")
     return "\n".join(lines) + "\n"

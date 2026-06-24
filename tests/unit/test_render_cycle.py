@@ -7,6 +7,7 @@ from rh_wizard.models.cycle import CycleRun
 from rh_wizard.models.plan import RejectedIntent, TradeIntent, VettedPlan
 from rh_wizard.models.portfolio import PortfolioState
 from rh_wizard.models.research import ResearchReport
+from rh_wizard.models.signals import Signal
 
 
 def _run(status="completed", note=""):
@@ -56,3 +57,26 @@ def test_render_aborted_run_shows_reason():
     out = render_cycle_result(CycleResult(run=_run(status="aborted", note="reconcile failed: x")))
     assert "ABORTED" in out.upper()
     assert "reconcile failed: x" in out
+
+
+def test_render_surfaces_unmet_signals_and_notes():
+    from rh_wizard.models.market import MarketContext
+
+    result = CycleResult(
+        run=_run(),
+        vetted=VettedPlan(
+            approved=[TradeIntent(side="buy", symbol="AAPL", quantity="1", limit_price="190")]
+        ),
+        market=MarketContext(
+            unmet_signals=[Signal.EARNINGS], notes=["robinhood fetch failed: boom"]
+        ),
+    )
+    out = render_cycle_result(result)
+    assert "Unmet signals: earnings" in out  # Signal.EARNINGS.value
+    assert "robinhood fetch failed: boom" in out  # degradation note surfaced
+
+
+def test_render_no_trades_message_only_when_nothing_proposed():
+    out = render_cycle_result(CycleResult(run=_run(), vetted=VettedPlan()))
+    assert "No trades proposed." in out
+    assert "DryRun" in out
