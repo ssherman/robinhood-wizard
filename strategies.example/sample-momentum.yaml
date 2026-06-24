@@ -1,14 +1,15 @@
 # strategies.example/sample-momentum.yaml
-# Copy to ~/.rh-wizard/strategies/ and run with: wizard run sample-momentum
-# In this version (Phase 4a) the research/plan brain is a deterministic stub.
+# Copy to ~/.rh-wizard/strategies/ and run with:
+#   uv run --env-file .env wizard run sample-momentum
+# `intent` is the free-text thesis handed to the research LLM; `universe` lists the
+# candidate tickers it may consider. Replace both with your own.
 id: sample-momentum
 name: Sample Momentum (example)
 intent: >
-  Example strategy. Replace with your own thesis — e.g. "20% rare-earth-metals funds,
-  20% energy, 40% AI stocks with strong fundamentals". The real research/plan LLM lands
-  in Phase 4b; today the agent brain is a stub that probes each candidate with a 1-share buy.
+  Prefer large-cap technology names with reasonable valuations. Favor a few high-conviction
+  positions over many small ones.
 universe: [AAPL, MSFT, NVDA]
-signals_needed: [price, average_volume, market_cap]
+signals_needed: [price, average_volume, market_cap, pe_ratio]
 cadence: weekly
 risk_overrides:
   max_position_pct: 15

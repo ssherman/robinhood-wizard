@@ -1,9 +1,11 @@
 # Copy to ~/.rh-wizard/config.yaml and edit. Placeholders only — no real secrets here.
 robinhood_mcp_url: "https://agent.robinhood.com/mcp/trading"
 
-# Provider-agnostic model selection (Strands). Examples:
-model_provider: "anthropic"        # or "bedrock", "openai", ...
-model_id: "claude-sonnet-4-6"      # your chosen model
+# Provider-agnostic model selection (Strands), used by `wizard run` for research + planning.
+# OpenAI is wired today; "anthropic"/"bedrock" are declared seams (not yet implemented).
+# Set the matching key in your environment / .env, e.g. OPENAI_API_KEY=sk-...
+model_provider: "openai"
+model_id: "gpt-5.5"                # any chat model your API key can access
 
 # These values build the redirect_uri registered with Robinhood and shown during the paste-based consent flow:
 oauth_redirect_host: "localhost"
