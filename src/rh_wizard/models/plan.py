@@ -7,19 +7,25 @@ forward-seam for future auto-resizing — empty in Phase 2.
 
 from __future__ import annotations
 
-from decimal import Decimal
-
 import pydantic
+
+from rh_wizard.models._types import LlmDecimal
 
 
 class TradeIntent(pydantic.BaseModel):
     side: str  # "buy" | "sell"
     symbol: str
-    quantity: Decimal | None = None  # target share quantity (or use ``amount``)
-    amount: Decimal | None = None  # target dollar amount (alternative to ``quantity``)
-    limit_price: Decimal | None = None
+    quantity: LlmDecimal | None = None  # target share quantity (or use ``amount``)
+    amount: LlmDecimal | None = None  # target dollar amount (alternative to ``quantity``)
+    limit_price: LlmDecimal | None = None
     rationale: str = ""
-    confidence: Decimal | None = None
+    confidence: LlmDecimal | None = None
+
+    @pydantic.field_validator("side", mode="before")
+    @classmethod
+    def _normalize_side(cls, value: object) -> object:
+        # LLMs emit "BUY"/"Sell"; canonicalize so the risk engine and journal see "buy"/"sell".
+        return value.strip().lower() if isinstance(value, str) else value
 
 
 class TradePlan(pydantic.BaseModel):

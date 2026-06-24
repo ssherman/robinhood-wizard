@@ -11,6 +11,12 @@ def test_trade_intent_coerces_decimals():
     assert i.amount is None
 
 
+def test_trade_intent_normalizes_side_case_and_whitespace():
+    # LLMs emit "BUY"/"Sell"; downstream (risk engine, journal) expects lowercase.
+    assert TradeIntent(side="BUY", symbol="AAPL").side == "buy"
+    assert TradeIntent(side=" Sell ", symbol="AAPL").side == "sell"
+
+
 def test_trade_plan_holds_intents():
     plan = TradePlan(intents=[TradeIntent(side="buy", symbol="AAPL")], rationale="thesis")
     assert len(plan.intents) == 1
