@@ -15,8 +15,8 @@ class Settings(pydantic.BaseModel):
     model_config = pydantic.ConfigDict(extra="forbid")
 
     robinhood_mcp_url: str = "https://agent.robinhood.com/mcp/trading"
-    model_provider: str = "anthropic"
-    model_id: str = "claude-sonnet-4-6"
+    model_provider: str = "openai"
+    model_id: str = "gpt-5.5"
     oauth_redirect_host: str = "localhost"
     oauth_redirect_port: int = 3030
     oauth_client_name: str = "Robinhood Wizard"
