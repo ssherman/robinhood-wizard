@@ -27,11 +27,7 @@ def _patterns(node):
 
 
 def _lookaround_patterns(model):
-    return [
-        p
-        for p in _patterns(model.model_json_schema())
-        if any(tok in p for tok in _LOOKAROUND)
-    ]
+    return [p for p in _patterns(model.model_json_schema()) if any(tok in p for tok in _LOOKAROUND)]
 
 
 def test_research_report_schema_has_no_lookaround():
