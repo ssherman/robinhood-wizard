@@ -114,3 +114,44 @@ def render_market_context(context) -> str:
     for note in context.notes:
         body += f"Note: {note}\n"
     return body
+
+
+def render_cycle_result(result) -> str:
+    """Render a CycleResult (run header + portfolio + research + vetted plan + DryRun footer)."""
+    from rich.table import Table
+
+    run = result.run
+    header = f"Run {run.run_id} — strategy '{run.strategy_id}' — mode {run.mode} — {run.status}"
+    if run.status != "completed":
+        return f"{header}\nABORTED: {run.note}\n"
+
+    lines = [header]
+    if result.portfolio is not None:
+        p = result.portfolio
+        lines.append(f"Cash: {fmt_money(p.cash)}   Total value: {fmt_money(p.total_value)}")
+    if result.report is not None and result.report.summary:
+        lines.append(f"Research: {result.report.summary}")
+
+    vetted = result.vetted
+    if vetted is not None and vetted.approved:
+        table = Table(title="Proposed trades (DryRun — approved)")
+        table.add_column("Side")
+        table.add_column("Symbol")
+        table.add_column("Qty", justify="right")
+        table.add_column("Limit", justify="right")
+        table.add_column("Rationale")
+        for i in vetted.approved:
+            table.add_row(
+                i.side, i.symbol, fmt_num(i.quantity), fmt_money(i.limit_price), i.rationale or "-"
+            )
+        lines.append(render_to_str(table).rstrip("\n"))
+    else:
+        lines.append("No trades proposed.")
+
+    if vetted is not None and vetted.rejected:
+        lines.append("Rejected:")
+        for r in vetted.rejected:
+            lines.append(f"  {r.intent.side} {r.intent.symbol}: {r.reason}")
+
+    lines.append("DryRun — no orders placed.")
+    return "\n".join(lines) + "\n"
