@@ -149,3 +149,61 @@ def test_cycle_records_research_sources():
         assert result.run.status == "completed"
         rows = journal.research_sources(result.run.run_id)
         assert [r["url"] for r in rows] == ["https://news/aapl"]
+
+
+def test_cycle_unions_discovered_universe_and_journals_it():
+    from rh_wizard.models.compile import SuggestedTicker
+    from rh_wizard.models.discovery import DiscoveryResult
+
+    class FakeDiscoverer:
+        def discover(self, strategy):
+            return DiscoveryResult(
+                tickers=[SuggestedTicker(symbol="NVDA", rationale="ai")], sources=[]
+            )
+
+    strategy = Strategy(
+        id="m", name="M", universe=["MSFT"], discover=True, signals_needed={Signal.PRICE}
+    )
+    with SqliteJournal(":memory:") as journal:
+        deps = _deps(journal)
+        deps.discoverer = FakeDiscoverer()
+        with deps.broker:
+            result = run_cycle(strategy, deps)
+        assert result.run.status == "completed"
+        assert "NVDA" in result.market.symbols  # discovered
+        assert "MSFT" in result.market.symbols  # explicit
+        assert result.discovery is not None
+        assert [r["symbol"] for r in journal.discovered_universe(result.run.run_id)] == ["NVDA"]
+
+
+def test_cycle_degrades_when_discovery_raises():
+    class BoomDiscoverer:
+        def discover(self, strategy):
+            raise RuntimeError("discovery down")
+
+    strategy = Strategy(
+        id="m", name="M", universe=["AAPL"], discover=True, signals_needed={Signal.PRICE}
+    )
+    with SqliteJournal(":memory:") as journal:
+        deps = _deps(journal)
+        deps.discoverer = BoomDiscoverer()
+        with deps.broker:
+            result = run_cycle(strategy, deps)
+        assert result.run.status == "completed"  # degrade, NOT abort
+        assert any("discovery failed" in n for n in result.market.notes)
+        assert [i.symbol for i in result.vetted.approved] == ["AAPL"]  # explicit universe used
+
+
+def test_cycle_skips_discovery_when_flag_off():
+    class BoomDiscoverer:
+        def discover(self, strategy):
+            raise AssertionError("discoverer must not be called when discover=False")
+
+    strategy = Strategy(id="m", name="M", universe=["AAPL"], signals_needed={Signal.PRICE})
+    with SqliteJournal(":memory:") as journal:
+        deps = _deps(journal)
+        deps.discoverer = BoomDiscoverer()  # present but must not be called
+        with deps.broker:
+            result = run_cycle(strategy, deps)
+        assert result.run.status == "completed"
+        assert result.discovery is None

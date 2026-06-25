@@ -14,9 +14,11 @@ from datetime import UTC, datetime
 
 from rh_wizard.config.settings import Settings
 from rh_wizard.data.resolver import SignalResolver
+from rh_wizard.discovery.base import UniverseDiscoverer
 from rh_wizard.memory.journal import SqliteJournal
 from rh_wizard.memory.portfolio import enrich_with_quotes, reconcile
 from rh_wizard.models.cycle import CycleMode, CycleRun
+from rh_wizard.models.discovery import DiscoveryResult
 from rh_wizard.models.market import MarketContext
 from rh_wizard.models.plan import TradePlan, VettedPlan
 from rh_wizard.models.portfolio import PortfolioState
@@ -37,6 +39,7 @@ class CycleDeps:
     researcher: Researcher
     planner: Planner
     journal: SqliteJournal
+    discoverer: UniverseDiscoverer | None = None
 
 
 @dataclass
@@ -47,10 +50,15 @@ class CycleResult:
     report: ResearchReport | None = None
     plan: TradePlan | None = None
     vetted: VettedPlan | None = None
+    discovery: DiscoveryResult | None = None
 
 
 def _now() -> str:
     return datetime.now(UTC).isoformat()
+
+
+def _norm(symbol: str) -> str:
+    return symbol.strip().upper()
 
 
 def run_cycle(
@@ -73,10 +81,27 @@ def run_cycle(
         deps.journal.record_run(run)
         return CycleResult(run=run)
 
-    # Stage 5 (RESOLVE SIGNALS) over the strategy universe + current holdings.
-    universe = sorted(set(strategy.universe) | {p.symbol for p in portfolio.positions})
+    # Stage 4.5 (DISCOVER) — opt-in; degrade-and-report on failure (never abort).
+    discovery: DiscoveryResult | None = None
+    discovery_note = ""
+    if strategy.discover and deps.discoverer is not None:
+        try:
+            discovery = deps.discoverer.discover(strategy)
+        except Exception as exc:  # discovery is best-effort; the cycle still runs
+            discovery_note = f"discovery failed: {exc}"
+
+    discovered = {_norm(t.symbol) for t in discovery.tickers} if discovery else set()
+
+    # Stage 5 (RESOLVE SIGNALS) over explicit universe ∪ discovered ∪ current holdings.
+    universe = sorted(
+        {_norm(s) for s in strategy.universe}
+        | {_norm(p.symbol) for p in portfolio.positions}
+        | discovered
+    )
     needed = set(strategy.signals_needed) | set(RISK_SIGNALS)
     market = deps.resolver.resolve(universe, needed)
+    if discovery_note:
+        market = market.model_copy(update={"notes": [*market.notes, discovery_note]})
 
     # Stages 6-8 (RESEARCH, PLAN, RISK) — an agentic-stage failure aborts cleanly (spec §13).
     try:
@@ -95,14 +120,22 @@ def run_cycle(
             }
         )
         deps.journal.record_run(run)
-        return CycleResult(run=run, portfolio=portfolio, market=market)
+        return CycleResult(run=run, portfolio=portfolio, market=market, discovery=discovery)
 
     # Stage 9: DryRun — no execution (Phase 5 adds the executor). Stage 11: JOURNAL.
     run = run.model_copy(update={"status": "completed", "finished_at": _now()})
     deps.journal.record_run(run)
     deps.journal.record_plan(run.run_id, vetted)
     deps.journal.record_research(run.run_id, report)
+    if discovery is not None:
+        deps.journal.record_discovery(run.run_id, discovery)
 
     return CycleResult(
-        run=run, portfolio=portfolio, market=market, report=report, plan=plan, vetted=vetted
+        run=run,
+        portfolio=portfolio,
+        market=market,
+        report=report,
+        plan=plan,
+        vetted=vetted,
+        discovery=discovery,
     )
