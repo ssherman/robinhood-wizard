@@ -31,3 +31,8 @@ def test_strategy_holds_intent_and_overrides():
 def test_strategy_forbids_unknown_fields():
     with pytest.raises(pydantic.ValidationError):
         Strategy(id="m", name="M", bogus=1)
+
+
+def test_strategy_web_research_defaults_true():
+    assert Strategy(id="m", name="M").web_research is True
+    assert Strategy(id="m", name="M", web_research=False).web_research is False

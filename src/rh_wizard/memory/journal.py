@@ -12,6 +12,7 @@ from pathlib import Path
 
 from rh_wizard.models.cycle import CycleRun
 from rh_wizard.models.plan import TradeIntent, VettedPlan
+from rh_wizard.models.research import ResearchReport
 from rh_wizard.models.trade import TradeRecord
 
 _SCHEMA = """
@@ -45,6 +46,13 @@ CREATE TABLE IF NOT EXISTS plan_intents (
     limit_price TEXT,
     rationale   TEXT,
     reason      TEXT,
+    PRIMARY KEY (run_id, seq)
+);
+CREATE TABLE IF NOT EXISTS research_sources (
+    run_id TEXT NOT NULL,
+    seq    INTEGER NOT NULL,
+    title  TEXT,
+    url    TEXT NOT NULL,
     PRIMARY KEY (run_id, seq)
 );
 """
@@ -140,6 +148,28 @@ class SqliteJournal:
                 rows,
             )
         self._conn.commit()
+
+    def record_research(self, run_id: str, report: ResearchReport) -> None:
+        self._conn.execute("DELETE FROM research_sources WHERE run_id = ?", (run_id,))
+        rows = [
+            {"run_id": run_id, "seq": i, "title": s.title, "url": s.url}
+            for i, s in enumerate(report.sources)
+        ]
+        if rows:
+            self._conn.executemany(
+                """
+                INSERT INTO research_sources (run_id, seq, title, url)
+                VALUES (:run_id, :seq, :title, :url);
+                """,
+                rows,
+            )
+        self._conn.commit()
+
+    def research_sources(self, run_id: str) -> list[dict]:
+        cur = self._conn.execute(
+            "SELECT * FROM research_sources WHERE run_id = ? ORDER BY seq", (run_id,)
+        )
+        return [dict(row) for row in cur.fetchall()]
 
     def recent_runs(self, limit: int = 50) -> list[CycleRun]:
         cur = self._conn.execute("SELECT * FROM runs ORDER BY started_at DESC LIMIT ?", (limit,))

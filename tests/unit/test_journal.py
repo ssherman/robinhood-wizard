@@ -1,6 +1,7 @@
 from decimal import Decimal
 
 from rh_wizard.memory.journal import SqliteJournal
+from rh_wizard.models.research import ResearchReport, Source
 from rh_wizard.models.trade import TradeRecord
 
 
@@ -59,3 +60,21 @@ def test_recent_trades_orders_newest_first(tmp_path):
         journal.record_trades([older, newer])
         trades = journal.recent_trades()
     assert [t.order_id for t in trades] == ["NEW", "OLD"]
+
+
+def test_record_research_persists_and_reads_back_sources():
+    with SqliteJournal(":memory:") as journal:
+        report = ResearchReport(
+            summary="ok",
+            sources=[Source(title="A", url="https://a"), Source(title="B", url="https://b")],
+        )
+        journal.record_research("run1", report)
+        rows = journal.research_sources("run1")
+        assert [(r["title"], r["url"]) for r in rows] == [("A", "https://a"), ("B", "https://b")]
+
+
+def test_record_research_is_idempotent_and_handles_empty():
+    with SqliteJournal(":memory:") as journal:
+        journal.record_research("run1", ResearchReport(sources=[Source(url="https://a")]))
+        journal.record_research("run1", ResearchReport(sources=[]))  # re-record clears prior rows
+        assert journal.research_sources("run1") == []

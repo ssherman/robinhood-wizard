@@ -1,6 +1,8 @@
 from decimal import Decimal
 
-from rh_wizard.cli.render import fmt_money, fmt_num, fmt_pct, render_to_str
+from rh_wizard.cli.render import fmt_money, fmt_num, fmt_pct, render_cycle_result, render_to_str
+from rh_wizard.models.cycle import CycleRun
+from rh_wizard.models.research import ResearchReport, Source
 
 
 def test_render_to_str_outputs_text():
@@ -51,3 +53,28 @@ def test_render_market_context_empty_symbols():
     from rh_wizard.models.market import MarketContext
 
     assert "No symbols." in render_market_context(MarketContext())
+
+
+class _Result:
+    def __init__(self, report):
+        self.run = CycleRun(
+            run_id="r1",
+            strategy_id="m",
+            mode="dryrun",
+            started_at="t",
+            finished_at="t",
+            status="completed",
+        )
+        self.portfolio = None
+        self.market = None
+        self.report = report
+        self.plan = None
+        self.vetted = None
+
+
+def test_render_shows_sources():
+    report = ResearchReport(summary="ok", sources=[Source(title="Headline", url="https://x/y")])
+    out = render_cycle_result(_Result(report))
+    assert "Sources:" in out
+    assert "Headline" in out
+    assert "https://x/y" in out

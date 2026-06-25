@@ -23,3 +23,13 @@ def test_cycle_run_defaults_completed():
     assert run.status == "completed"
     assert run.finished_at is None
     assert run.note == ""
+
+
+def test_source_and_report_sources_default():
+    from rh_wizard.models.research import ResearchReport, Source
+
+    assert ResearchReport().sources == []
+    s = Source(url="https://example.com/a", title="A")
+    assert s.url == "https://example.com/a"
+    assert s.title == "A"
+    assert Source(url="https://x").title == ""

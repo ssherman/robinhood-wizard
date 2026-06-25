@@ -25,6 +25,15 @@ def _build_llm(settings):
     return build_llm(settings)
 
 
+def _build_web_researcher(settings):
+    """Build the web-search researcher (real path; patched in tests)."""
+    from rh_wizard.llm.openai_web import OpenAiWebSearchLlm
+    from rh_wizard.llm.web_search import RetryingWebSearchLlm
+    from rh_wizard.research.web_llm import WebLlmResearcher
+
+    return WebLlmResearcher(RetryingWebSearchLlm(OpenAiWebSearchLlm(settings)))
+
+
 def list_strategies() -> None:
     registry = StrategyRegistry(paths.strategies_dir())
     ids = registry.list()
@@ -48,11 +57,14 @@ def run_strategy(strategy_id: str) -> None:
     resolver = SignalResolver([RobinhoodDataSource(broker)])
     with broker, SqliteJournal(paths.db_path()) as journal:
         llm = _build_llm(settings)
+        researcher = (
+            _build_web_researcher(settings) if strategy.web_research else LlmResearcher(llm)
+        )
         deps = CycleDeps(
             broker=broker,
             settings=settings,
             resolver=resolver,
-            researcher=LlmResearcher(llm),
+            researcher=researcher,
             planner=LlmPlanner(llm),
             journal=journal,
         )
