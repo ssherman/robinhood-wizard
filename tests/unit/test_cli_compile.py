@@ -80,3 +80,18 @@ def test_compile_requires_exactly_one_input(monkeypatch, tmp_path):
 def test_compile_rejects_unsafe_id(monkeypatch, tmp_path):
     _patch(monkeypatch, tmp_path)
     assert runner.invoke(app, ["compile", "../evil", "--text", "x"]).exit_code != 0
+
+
+def test_compile_llm_error_exits_nonzero_and_writes_nothing(monkeypatch, tmp_path):
+    from rh_wizard.llm.base import LlmError
+
+    monkeypatch.setenv("RH_WIZARD_HOME", str(tmp_path))
+
+    class ErrorCompiler:
+        def compile(self, strategy_id, prose):
+            raise LlmError("API failure")
+
+    monkeypatch.setattr(compile_module, "_build_compiler", lambda settings: ErrorCompiler())
+    result = runner.invoke(app, ["compile", "ai", "--text", "x"])
+    assert result.exit_code != 0
+    assert not (tmp_path / "strategies" / "ai.yaml").exists()
