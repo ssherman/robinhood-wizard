@@ -10,7 +10,7 @@ vetted by a deterministic risk engine. Equities and ETFs only.
 
 ## Status
 
-Actively developed. **What works today (Phases 0–4b-1):**
+Actively developed. **What works today (Phases 0–4c):**
 
 - **Authentication** to a Robinhood Agentic Trading account (browser consent → cached, auto-refreshed token).
 - **Read-only portfolio + history** — reconcile live holdings, sync order history into a local journal.
@@ -19,6 +19,9 @@ Actively developed. **What works today (Phases 0–4b-1):**
   signals → **LLM research** → **LLM plan** → **risk vet** → journal.
 - **Real LLM brain** — research and planning are done by an LLM (OpenAI, via the Strands
   Agents SDK) producing schema-validated structured output.
+- **Natural-language strategy compiler** — `wizard compile <id> --text "..."` turns a plain
+  description into a reviewable strategy YAML, using the LLM + web search to suggest a
+  candidate universe (with citations). You review/edit the file, then `wizard run <id>`.
 
 **DryRun only.** There is **no order-execution path anywhere in the codebase yet** — `run`
 proposes and vets a plan, then stops. The risk engine is the hard gate and nothing can
@@ -140,6 +143,31 @@ uv run wizard data AAPL MSFT NVDA      # quotes + fundamentals for these symbols
 All output masks account numbers to the last 4 characters. These commands place or cancel
 nothing.
 
+### Compiling a strategy from natural language
+
+Instead of hand-writing the YAML, describe the strategy in prose and let the agent draft it
+(name, thesis, a **web-search-suggested** candidate universe with citations, and the signals
+to resolve). It writes `~/.rh-wizard/strategies/<id>.yaml` — **review and edit it**, then run
+it. Because it uses the LLM + web search, provide the OpenAI key (it never touches the broker
+and places no orders):
+
+```bash
+# From an inline description:
+uv run --env-file .env wizard compile ai-large-cap \
+  --text "Large-cap AI names with reasonable valuations; a few high-conviction picks."
+
+# …or from a file:
+uv run --env-file .env wizard compile ai-large-cap --file thesis.txt
+
+uv run wizard strategies            # the new id now appears
+# review ~/.rh-wizard/strategies/ai-large-cap.yaml, then:
+uv run --env-file .env wizard run ai-large-cap
+```
+
+The suggested tickers are LLM web-search suggestions, not vetted picks — review them before
+running. Re-compiling an existing id requires `--force`. The compiler never sets
+`risk_overrides`; risk always comes from your global config (and any `risk_ceiling`).
+
 ### Running a strategy (the DryRun cycle)
 
 1. **Write a strategy** as YAML in `~/.rh-wizard/strategies/`. Start from the example:
@@ -200,8 +228,9 @@ risk_overrides:
   max_position_pct: 15
 ```
 
-> Today the agent acts on the explicit `universe` list. Automatic theme→ticker discovery
-> (so `intent` alone is enough) is a planned phase.
+> `wizard compile` can *suggest* a `universe` from a prose theme (web-search-backed) for you
+> to review. Fully automatic, per-cycle theme→ticker discovery (so `intent` alone drives every
+> run) is a planned phase.
 
 ## Risk guardrails
 
@@ -255,10 +284,10 @@ Design docs live in `docs/superpowers/specs/`; per-phase implementation plans in
 ## Roadmap
 
 - **Done:** scaffold/auth (0) · read-only portfolio + journal (1) · risk engine (2) · data
-  layer (3) · DryRun cycle skeleton (4a) · **LLM research + plan (4b-1)**.
-- **Next:** web/news search for research (4b-2) · natural-language strategy compiler (4c) ·
-  theme→ticker universe discovery · order execution with Human-Approval / Autonomous modes
-  and kill-switch enforcement.
+  layer (3) · DryRun cycle skeleton (4a) · LLM research + plan (4b-1) · web/news search
+  (4b-2) · **natural-language strategy compiler (4c)**.
+- **Next:** theme→ticker universe discovery · order execution with Human-Approval /
+  Autonomous modes and kill-switch enforcement.
 
 ## License
 
