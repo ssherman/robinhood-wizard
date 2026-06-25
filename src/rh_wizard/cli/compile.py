@@ -52,7 +52,7 @@ def _render_summary(result: CompileResult, path: Path, strategy_id: str) -> str:
     if result.sources:
         lines.append("Sources:")
         for s in result.sources:
-            lines.append(f"  - {(s.title or s.url)}  {s.url}")
+            lines.append(f"  - {s.title}  {s.url}" if s.title else f"  - {s.url}")
     lines.append(f"Review the file, then: wizard run {strategy_id}")
     return "\n".join(lines)
 

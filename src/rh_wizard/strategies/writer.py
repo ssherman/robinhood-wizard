@@ -42,7 +42,7 @@ def _comment_header(result: CompileResult, prose: str) -> str:
     if result.sources:
         lines += ["#", "# Sources:"]
         for s in result.sources:
-            lines.append(f"#   - {(s.title or s.url)}  {s.url}")
+            lines.append(f"#   - {s.title}  {s.url}" if s.title else f"#   - {s.url}")
     lines.append("")  # trailing newline before the YAML body
     return "\n".join(lines)
 

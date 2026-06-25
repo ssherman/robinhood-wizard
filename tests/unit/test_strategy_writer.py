@@ -44,3 +44,22 @@ def test_written_yaml_has_review_header(tmp_path):
     assert "ai names with reasonable valuations" in text
     assert "azure" in text  # per-ticker rationale
     assert "https://e/ai" in text  # source url
+
+
+def test_written_yaml_round_trips_with_empty_tickers_and_sources(tmp_path):
+    strategy = Strategy(
+        id="empty",
+        name="Empty",
+        intent="nothing yet",
+        universe=[],
+        signals_needed=set(),
+        risk_overrides={},
+        web_research=True,
+    )
+    result = CompileResult(strategy=strategy, tickers=[], sources=[])
+    path = tmp_path / "empty.yaml"
+    write_strategy_yaml(path, result, "a thesis with no tickers")
+    text = path.read_text(encoding="utf-8")
+    assert text.startswith("#")
+    loaded = StrategyRegistry(tmp_path).load("empty")
+    assert loaded == result.strategy
