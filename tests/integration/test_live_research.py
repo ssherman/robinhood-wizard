@@ -109,5 +109,5 @@ def test_live_web_research_cycle(tmp_path):
         assert result.run.status in {"completed", "aborted"}  # never crashes
         if result.run.status == "completed":
             assert result.report is not None
-            # web research should yield at least one cited source on a normal run
-            assert journal.research_sources(result.run.run_id) is not None
+            # the cycle must journal exactly the sources the researcher reported
+            assert len(journal.research_sources(result.run.run_id)) == len(result.report.sources)
