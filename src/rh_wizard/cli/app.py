@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 
 import typer
 
 from rh_wizard.cli.auth import auth_app, run_accounts
+from rh_wizard.cli.compile import compile_strategy
 from rh_wizard.cli.market import run_data
 from rh_wizard.cli.portfolio import run_history, run_positions
 from rh_wizard.cli.run import list_strategies, run_strategy
@@ -65,6 +67,21 @@ def run(
 ) -> None:
     """Run one DryRun cycle for STRATEGY_ID — proposes a vetted plan, places no orders."""
     run_strategy(strategy_id)
+
+
+@app.command()
+def compile(
+    strategy_id: str = typer.Argument(..., help="Strategy id (yaml filename stem)."),  # noqa: B008
+    file: Path | None = typer.Option(  # noqa: B008
+        None, "--file", "-f", help="Read the strategy description from this file."
+    ),
+    text: str | None = typer.Option(  # noqa: B008
+        None, "--text", "-t", help="The strategy description inline."
+    ),
+    force: bool = typer.Option(False, "--force", help="Overwrite an existing strategy file."),  # noqa: B008
+) -> None:
+    """Compile a plain-language description into a reviewable strategy YAML (no orders)."""
+    compile_strategy(strategy_id, file, text, force)
 
 
 def main() -> None:
