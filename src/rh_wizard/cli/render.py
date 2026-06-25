@@ -131,6 +131,11 @@ def render_cycle_result(result) -> str:
         lines.append(f"Cash: {fmt_money(p.cash)}   Total value: {fmt_money(p.total_value)}")
     if result.report is not None and result.report.summary:
         lines.append(f"Research: {result.report.summary}")
+    if result.report is not None and result.report.sources:
+        lines.append("Sources:")
+        for s in result.report.sources:
+            label = s.title or s.url
+            lines.append(f"  - {label} ({s.url})")
 
     # Surface data-resolution gaps so a partial-data run is visible to the operator (spec §13).
     if result.market is not None:

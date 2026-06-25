@@ -127,3 +127,25 @@ def test_cycle_aborts_when_research_raises():
         assert "llm down" in result.run.note
         assert result.vetted is None
         assert journal.recent_runs()[0].status == "aborted"
+
+
+def test_cycle_records_research_sources():
+    from rh_wizard.models.research import Candidate, ResearchReport, Source
+
+    class SourcedResearcher:
+        def research(self, strategy, market, portfolio):
+            return ResearchReport(
+                candidates=[Candidate(symbol="AAPL", thesis="fit")],
+                summary="ok",
+                sources=[Source(title="N", url="https://news/aapl")],
+            )
+
+    strategy = Strategy(id="m", name="M", universe=["AAPL"], signals_needed={Signal.PRICE})
+    with SqliteJournal(":memory:") as journal:
+        deps = _deps(journal)
+        deps.researcher = SourcedResearcher()
+        with deps.broker:
+            result = run_cycle(strategy, deps)
+        assert result.run.status == "completed"
+        rows = journal.research_sources(result.run.run_id)
+        assert [r["url"] for r in rows] == ["https://news/aapl"]

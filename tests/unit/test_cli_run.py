@@ -51,7 +51,7 @@ def _write_strategy(home):
     d = home / "strategies"
     d.mkdir(parents=True, exist_ok=True)
     (d / "demo.yaml").write_text(
-        "id: demo\nname: Demo\nuniverse: [AAPL]\nsignals_needed: [price]\n"
+        "id: demo\nname: Demo\nuniverse: [AAPL]\nsignals_needed: [price]\nweb_research: false\n"
     )
 
 
@@ -81,3 +81,30 @@ def test_run_unknown_strategy_errors(monkeypatch, tmp_path):
     result = runner.invoke(app, ["run", "ghost"])
     assert result.exit_code != 0
     assert "ghost" in result.output
+
+
+def test_run_web_research_uses_web_researcher(monkeypatch, tmp_path):
+    from rh_wizard.models.research import Candidate, ResearchReport, Source
+
+    monkeypatch.setenv("RH_WIZARD_HOME", str(tmp_path))
+    d = tmp_path / "strategies"
+    d.mkdir(parents=True, exist_ok=True)
+    (d / "web.yaml").write_text(
+        "id: web\nname: Web\nuniverse: [AAPL]\nsignals_needed: [price]\nweb_research: true\n"
+    )
+
+    class FakeWebResearcher:
+        def research(self, strategy, market, portfolio):
+            return ResearchReport(
+                candidates=[Candidate(symbol="AAPL", thesis="fit")],
+                summary="ok",
+                sources=[Source(title="Headline", url="https://news.example/aapl")],
+            )
+
+    monkeypatch.setattr(auth, "_build_broker", lambda settings: FakeBroker())
+    monkeypatch.setattr(run_module, "_build_llm", lambda settings: FakeStructuredLlm())
+    monkeypatch.setattr(run_module, "_build_web_researcher", lambda settings: FakeWebResearcher())
+    result = runner.invoke(app, ["run", "web"])
+    assert result.exit_code == 0
+    assert "AAPL" in result.output
+    assert "news.example/aapl" in result.output  # sources rendered

@@ -101,6 +101,7 @@ def run_cycle(
     run = run.model_copy(update={"status": "completed", "finished_at": _now()})
     deps.journal.record_run(run)
     deps.journal.record_plan(run.run_id, vetted)
+    deps.journal.record_research(run.run_id, report)
 
     return CycleResult(
         run=run, portfolio=portfolio, market=market, report=report, plan=plan, vetted=vetted
