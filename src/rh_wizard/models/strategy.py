@@ -24,3 +24,4 @@ class Strategy(pydantic.BaseModel):
     signals_needed: set[Signal] = set()  # signals the strategy wants resolved
     cadence: str | None = None  # hint only in v1 (e.g. "weekly")
     risk_overrides: dict[str, object] = {}  # merged onto global RiskPolicy defaults
+    web_research: bool = True  # Phase 4b-2: use web search in the research stage
