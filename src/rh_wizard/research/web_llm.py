@@ -35,11 +35,17 @@ def _research_prompt(strategy: Strategy, market: MarketContext, portfolio: Portf
         "",
         f"Currently held: {', '.join(sorted(held)) or '(none)'}",
         f"Cash available: {portfolio.cash}",
-        "",
+    ]
+    if market.unmet_signals:
+        lines.append(
+            "Unmet signals (data gaps): " + ", ".join(s.value for s in market.unmet_signals)
+        )
+    lines.append("")
+    lines.append(
         "Search the web for general market conditions and recent news on each candidate, "
         "then return a ResearchReport: candidates that fit the thesis (with thesis text and "
-        "conviction 0-1) plus a one-paragraph summary.",
-    ]
+        "conviction 0-1) plus a one-paragraph summary."
+    )
     return "\n".join(lines)
 
 

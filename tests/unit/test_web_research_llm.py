@@ -52,3 +52,19 @@ def test_research_attaches_sources_and_returns_report():
 
 def test_satisfies_researcher_protocol():
     assert isinstance(WebLlmResearcher(FakeWebSearchLlm()), Researcher)
+
+
+def test_research_prompt_includes_unmet_signals():
+    from rh_wizard.models.signals import Signal
+
+    fake = FakeWebSearchLlm()
+    researcher = WebLlmResearcher(fake)
+    market = MarketContext(
+        requested=[],
+        symbols={"AAPL": SymbolData(symbol="AAPL", price="100")},
+        unmet_signals=[Signal.NEWS],
+        notes=[],
+    )
+    strategy = Strategy(id="m", name="M", universe=["AAPL"])
+    researcher.research(strategy, market, _portfolio())
+    assert "Unmet signals (data gaps): news" in fake.last_prompt
