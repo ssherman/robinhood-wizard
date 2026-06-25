@@ -44,3 +44,9 @@ def test_llm_decimal_fields_still_coerce_to_decimal():
     intent = TradeIntent(side="buy", symbol="AAPL", quantity="10", limit_price="190.50")
     assert intent.quantity == Decimal("10")
     assert intent.limit_price == Decimal("190.50")
+
+
+def test_compiled_strategy_schema_has_no_lookaround():
+    from rh_wizard.models.compile import CompiledStrategy
+
+    assert _lookaround_patterns(CompiledStrategy) == []
