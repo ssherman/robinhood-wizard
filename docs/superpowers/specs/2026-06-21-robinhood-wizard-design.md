@@ -266,6 +266,26 @@ against the real Robinhood Agentic MCP server under WSL2.
    pastes the redirect URL). Dynamic client registration + PKCE + token exchange + on-disk
    token storage (`DiskTokenStorage`, 0600) all work; **silent refresh confirmed** (second run
    needs no browser). The `OAuthCallbackServer` localhost listener is currently unused.
+
+   **WSL first-consent follow-up — RESOLVED (2026-06-25, PR #10 commit `3b9591e`).** Two
+   failure modes bit the *first-time* interactive consent under WSL:
+   - **Strands `MCPClient` `startup_timeout` defaults to 30s** — far too short for browser
+     approval + 2FA + paste; the client aborts mid-consent ("client initialization timed out",
+     and a late paste goes nowhere). Fix: `Settings.mcp_startup_timeout: int = 300`, passed via
+     `make_broker_client` → `MCPClient(transport, startup_timeout=settings.mcp_startup_timeout)`
+     (`broker/client.py`). The silent-refresh path is fast, so the larger ceiling only matters
+     for the interactive consent.
+   - **The WSL browser auto-open is broken** (SSL/Fontconfig errors, steals focus). `cli/auth.py`
+     `_redirect_handler` now skips `webbrowser.open` under WSL (`_is_wsl()` checks
+     `os.uname().release` for "microsoft"); it prints the URL only. Open it in the **Windows**
+     browser, approve, copy the `localhost:3030/callback?code=…` URL from the address bar (the
+     page fails to load — expected), and paste it at the prompt.
+
+   Tokens are stored **per dynamic-client-registration**: a `tokens.json` whose `client_info`
+   (DCR) does not match its `tokens` 401s straight back to consent. When migrating the home dir
+   (`RH_WIZARD_HOME`, e.g. to a project-local `.rh-wizard/`), copy the **whole** matched
+   `tokens.json` — the refresh token then silently refreshes with no browser. Keep the home dir
+   gitignored (`.gitignore` lists both `tokens.json` and `.rh-wizard/`).
 4. **Strands tool-call API — RESOLVED.** `MCPClient.call_tool_sync(tool_use_id, name, arguments)`
    requires a `tool_use_id` and returns an `MCPToolResult` dict (`status`, `toolUseId`,
    `content[]` of `{text|json}`, optional `structuredContent`) — not the raw MCP payload. The
