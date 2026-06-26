@@ -83,11 +83,17 @@ def _split_buys(
     shortfall: Decimal,
     market: dict[str, SymbolData],
     allow_fractional: bool,
+    member: dict[str, str],
+    bucket_id: str,
 ) -> list[TradeIntent]:
     if rec is None or shortfall <= 0:
         return []
     priced = [
-        p for p in rec.positions if _norm(p.symbol) in market and market[_norm(p.symbol)].price
+        p
+        for p in rec.positions
+        if _norm(p.symbol) in market
+        and market[_norm(p.symbol)].price
+        and member.get(_norm(p.symbol)) == bucket_id
     ]
     if not priced:
         return []
@@ -170,7 +176,12 @@ def allocate(
             action = "skipped (within band)"
         elif drift < 0:  # underweight -> buy the shortfall
             buys = _split_buys(
-                rec_by_bucket.get(bucket.id), budget - current, market, strategy.allow_fractional
+                rec_by_bucket.get(bucket.id),
+                budget - current,
+                market,
+                strategy.allow_fractional,
+                member,
+                bucket.id,
             )
             if buys:
                 buy_intents.extend(buys)
@@ -191,7 +202,7 @@ def allocate(
                     sell_intents.extend(sells)
                     action = "sell"
                 else:
-                    action = "hold (overweight, buy_only)"
+                    action = "hold (overweight, no sellable position)"
             else:
                 action = "hold (overweight, buy_only)"
         report_buckets.append(

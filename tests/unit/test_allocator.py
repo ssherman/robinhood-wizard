@@ -310,6 +310,33 @@ def test_whole_share_sell_floors():
     assert plan.intents[0].quantity == Decimal("4")
 
 
+def test_symbol_shared_across_buckets_is_bought_once():
+    # NVDA is recommended in both buckets; membership (first-match) assigns it to "a".
+    # Bucket "a" buys NVDA; bucket "b" must NOT re-buy NVDA — it buys only MSFT.
+    strat = _strategy([Bucket(id="a", target_pct="50"), Bucket(id="b", target_pct="50")])
+    rec = AllocationRecommendation(
+        buckets=[
+            BucketRecommendation(bucket_id="a", positions=[RecommendedPosition(symbol="NVDA")]),
+            BucketRecommendation(
+                bucket_id="b",
+                positions=[RecommendedPosition(symbol="NVDA"), RecommendedPosition(symbol="MSFT")],
+            ),
+        ]
+    )
+    plan, _ = allocate(
+        strat,
+        rec,
+        RiskPolicy(),
+        _portfolio(cash="1000"),
+        _market({"NVDA": "100", "MSFT": "100"}),
+    )
+    nvda_buys = [i for i in plan.intents if i.symbol == "NVDA"]
+    assert len(nvda_buys) == 1  # bought once (bucket a), not duplicated
+    assert nvda_buys[0].amount == Decimal("450")  # investable 900, bucket a budget 450
+    msft_buys = [i for i in plan.intents if i.symbol == "MSFT"]
+    assert msft_buys[0].amount == Decimal("450")  # bucket b buys only MSFT (NVDA filtered out)
+
+
 def test_sells_are_ordered_before_buys():
     # AI overweight (sell), energy underweight (buy). investable 900.
     strat = _strategy(
