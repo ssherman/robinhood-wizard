@@ -1,3 +1,6 @@
+import os
+
+import pytest
 from typer.testing import CliRunner
 
 from rh_wizard.cli import auth
@@ -176,3 +179,22 @@ def test_run_bucketed_uses_recommender_and_renders_allocation(monkeypatch, tmp_p
     assert "Allocation" in result.output
     assert "AAPL" in result.output
     assert "no orders" in result.output.lower()
+
+
+@pytest.mark.skipif(
+    not (os.environ.get("RH_WIZARD_LIVE") and os.environ.get("OPENAI_API_KEY")),
+    reason="live test: needs RH_WIZARD_LIVE=1 and OPENAI_API_KEY",
+)
+def test_live_bucketed_cycle_completes_without_orders(monkeypatch, tmp_path):
+    monkeypatch.setenv("RH_WIZARD_HOME", str(tmp_path))
+    d = tmp_path / "strategies"
+    d.mkdir(parents=True, exist_ok=True)
+    (d / "live.yaml").write_text(
+        "id: live\nname: Live\nsignals_needed: [price, fractionable]\n"
+        "buckets:\n  - id: ai\n    target_pct: 50\n    intent: large-cap AI leaders\n"
+        "    discover: true\n    max_candidates: 5\n"
+    )
+    monkeypatch.setattr(auth, "_build_broker", lambda settings: FakeBroker())
+    result = runner.invoke(app, ["run", "live"])
+    assert result.exit_code == 0, result.output
+    assert "DryRun" in result.output and "no orders" in result.output.lower()

@@ -257,8 +257,55 @@ risk_overrides:
 
 > Two ways to get a universe from a theme: `wizard compile` *suggests* a `universe` once for
 > you to review/freeze; `discover: true` discovers one *dynamically every cycle* from `intent`.
-> Use either, or both (a reviewed core list plus live discovery around it). Allocation buckets
-> with target percentages are a planned phase.
+> Use either, or both (a reviewed core list plus live discovery around it). For target-percentage
+> allocation across themes, see **Bucketed strategies** below.
+
+### Bucketed strategies
+
+A bucketed strategy divides your investable capital into named themes, each with a target
+percentage. The LLM recommends which tickers fit each bucket and their relative weights; a
+deterministic allocator sizes the positions to hit the targets; the risk engine vets every
+proposed order. Buckets are **mutually exclusive** with a flat top-level `universe` or
+`discover` key — use one model or the other per strategy file.
+
+```yaml
+buckets:
+  - id: ai               # stable id for this bucket (used in journaling)
+    name: AI             # display name
+    target_pct: 40       # target % of investable capital
+    intent: Large-cap AI and semiconductor leaders with durable demand.
+    discover: true        # discover candidate tickers for this theme each cycle
+    max_candidates: 15
+  - id: energy
+    name: Energy
+    target_pct: 20
+    intent: Large-cap energy producers with strong free cash flow.
+    universe: [XOM, CVX]  # or list tickers explicitly instead of discovering
+  - id: broad
+    name: Broad market
+    target_pct: 20
+    universe: [VOO]
+# Targets sum to 80%; the remaining 20% of investable stays as extra cash.
+```
+
+Targets are expressed as **% of investable capital** (portfolio value minus the configured
+cash reserve). They need not sum to 100 — any gap becomes additional cash. Each bucket may
+use `universe`, `discover: true`, or both.
+
+Three per-strategy dials control rebalance behavior (all shown with their defaults):
+
+| Field | Default | Meaning |
+|-------|---------|---------|
+| `allow_fractional` | `true` | Size positions fractionally when Robinhood marks the symbol as fractionable; automatically degrades to whole-share sizing for symbols that do not support it |
+| `rebalance_mode` | `full` | `full` = buy under-weight buckets *and* sell-to-trim over-weight ones; `buy_only` = never sells |
+| `rebalance_band_pct` | `5` | Only rebalance a bucket when its current allocation drifts more than this many percentage points from its target |
+
+The rebalance band **decouples how often you run the cycle from how often it actually trades**.
+With a 5-point band and weekly cadence, a bucket that drifts only 3 points off target is
+left alone that cycle — this prevents churning on normal market noise.
+
+See `strategies.example/sample-buckets.yaml` for a complete annotated example to copy and
+adapt.
 
 ## Risk guardrails
 
