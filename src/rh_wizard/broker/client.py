@@ -77,6 +77,17 @@ class BrokerClient:
         payload = self._call("get_equity_fundamentals", symbols=list(symbols))
         return _extract_list(payload, "results") or _extract_list(payload, "fundamentals")
 
+    def get_equity_tradability(self, symbols: list[str]) -> list[dict]:
+        """Return one tradability dict per symbol (whether fractional orders are supported).
+
+        Payload shape unconfirmed until live verification (Phase 4e, spec §18) — defensively
+        unwrap ``data.results``/``data.tradability``, tolerating a flat list.
+        """
+        if not symbols:
+            return []
+        payload = self._call("get_equity_tradability", symbols=list(symbols))
+        return _extract_list(payload, "results") or _extract_list(payload, "tradability")
+
     def get_equity_orders(
         self,
         account_number: str,

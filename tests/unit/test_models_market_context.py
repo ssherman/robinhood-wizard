@@ -48,3 +48,10 @@ def test_to_symbol_risk_passes_through_missing_volume_and_cap():
     risk = ctx.to_symbol_risk()
     assert risk["AAPL"].average_volume is None
     assert risk["AAPL"].market_cap is None
+
+
+def test_symbol_data_carries_fractionable():
+    from rh_wizard.models.market import SymbolData
+
+    assert SymbolData(symbol="AAPL").fractionable is None
+    assert SymbolData(symbol="AAPL", fractionable=True).fractionable is True

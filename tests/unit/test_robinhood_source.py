@@ -111,3 +111,23 @@ def test_fetch_returns_entry_even_when_broker_omits_a_symbol():
     assert set(data) == {"AAPL", "MSFT"}  # every requested symbol is present
     assert data["AAPL"].price == Decimal("190.00")
     assert data["MSFT"].price is None  # omitted by broker -> a gap (degrade-and-report)
+
+
+def test_fractionable_parsed_from_tradability():
+    from rh_wizard.data.robinhood import RobinhoodDataSource
+    from rh_wizard.models.signals import Signal
+
+    class Broker:
+        def get_equity_tradability(self, symbols):
+            return [
+                {"symbol": "AAPL", "fractional_tradability": "tradable"},
+                {"symbol": "BRK.A", "fractional_tradability": "untradable"},
+                {"symbol": "ZZZ"},  # missing field -> None
+            ]
+
+    src = RobinhoodDataSource(Broker())
+    assert Signal.FRACTIONABLE in src.provides()
+    out = src.fetch(["AAPL", "BRK.A", "ZZZ"], {Signal.FRACTIONABLE})
+    assert out["AAPL"].fractionable is True
+    assert out["BRK.A"].fractionable is False
+    assert out["ZZZ"].fractionable is None
