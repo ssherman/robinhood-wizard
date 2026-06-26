@@ -90,8 +90,11 @@ def _parse_fractionable(raw: dict) -> bool | None:
 class RobinhoodDataSource:
     name = "robinhood"
 
-    def __init__(self, broker: Any) -> None:
+    def __init__(self, broker: Any, account_number: str | None = None) -> None:
         self._broker = broker
+        # FRACTIONABLE comes from get_equity_tradability, which REQUIRES an account number.
+        # Without one we skip that call and leave fractionable=None (whole-share-safe default).
+        self._account_number = account_number
 
     def provides(self) -> set[Signal]:
         return set(_PROVIDED)
@@ -115,8 +118,8 @@ class RobinhoodDataSource:
                 if sym in fields:
                     fields[sym].update(_parse_fundamentals(row))
 
-        if Signal.FRACTIONABLE in wanted:
-            for row in self._broker.get_equity_tradability(symbols):
+        if Signal.FRACTIONABLE in wanted and self._account_number is not None:
+            for row in self._broker.get_equity_tradability(self._account_number, symbols):
                 sym = row.get("symbol")
                 if sym in fields:
                     fields[sym]["fractionable"] = _parse_fractionable(row)

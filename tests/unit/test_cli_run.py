@@ -49,7 +49,7 @@ class FakeBroker:
             for s in symbols
         ]
 
-    def get_equity_tradability(self, symbols):
+    def get_equity_tradability(self, account_number, symbols):
         return [{"symbol": s, "fractional_tradability": "tradable"} for s in symbols]
 
 

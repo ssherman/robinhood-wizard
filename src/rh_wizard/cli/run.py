@@ -12,6 +12,7 @@ from rh_wizard.core.cycle import CycleDeps, run_cycle
 from rh_wizard.data.resolver import SignalResolver
 from rh_wizard.data.robinhood import RobinhoodDataSource
 from rh_wizard.memory.journal import SqliteJournal
+from rh_wizard.memory.portfolio import resolve_account_number
 from rh_wizard.models.cycle import CycleMode
 from rh_wizard.planning.llm import LlmPlanner
 from rh_wizard.research.llm import LlmResearcher
@@ -72,8 +73,11 @@ def run_strategy(strategy_id: str) -> None:
         raise typer.BadParameter(str(exc)) from exc
 
     broker = auth._build_broker(settings)
-    resolver = SignalResolver([RobinhoodDataSource(broker)])
     with broker, SqliteJournal(paths.db_path()) as journal:
+        # Resolve the trading account up front so the data layer can call account-scoped tools
+        # (get_equity_tradability, for the fractionable signal) correctly.
+        account_number = resolve_account_number(broker, settings)
+        resolver = SignalResolver([RobinhoodDataSource(broker, account_number)])
         llm = _build_llm(settings)
         researcher = (
             _build_web_researcher(settings) if strategy.web_research else LlmResearcher(llm)
