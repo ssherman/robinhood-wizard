@@ -43,6 +43,15 @@ def _build_discoverer(settings):
     return WebUniverseDiscoverer(RetryingWebSearchLlm(OpenAiWebSearchLlm(settings)))
 
 
+def _build_recommender(settings):
+    """Build the web-search-backed bucket recommender (real path; patched in tests)."""
+    from rh_wizard.allocation.web_llm import WebBucketRecommender
+    from rh_wizard.llm.openai_web import OpenAiWebSearchLlm
+    from rh_wizard.llm.web_search import RetryingWebSearchLlm
+
+    return WebBucketRecommender(RetryingWebSearchLlm(OpenAiWebSearchLlm(settings)))
+
+
 def list_strategies() -> None:
     registry = StrategyRegistry(paths.strategies_dir())
     ids = registry.list()
@@ -76,7 +85,12 @@ def run_strategy(strategy_id: str) -> None:
             researcher=researcher,
             planner=LlmPlanner(llm),
             journal=journal,
-            discoverer=_build_discoverer(settings) if strategy.discover else None,
+            discoverer=(
+                _build_discoverer(settings)
+                if strategy.discover or any(b.discover for b in strategy.buckets)
+                else None
+            ),
+            recommender=_build_recommender(settings) if strategy.buckets else None,
         )
         result = run_cycle(strategy, deps, CycleMode.DRY_RUN)
     typer.echo(render_cycle_result(result))

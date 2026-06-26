@@ -46,6 +46,9 @@ class FakeBroker:
             for s in symbols
         ]
 
+    def get_equity_tradability(self, symbols):
+        return [{"symbol": s, "fractional_tradability": "tradable"} for s in symbols]
+
 
 def _write_strategy(home):
     d = home / "strategies"
@@ -137,3 +140,39 @@ def test_run_discover_uses_discoverer_and_renders(monkeypatch, tmp_path):
     assert result.exit_code == 0, result.output
     assert "Discovered universe" in result.output
     assert "AAPL" in result.output
+
+
+def test_run_bucketed_uses_recommender_and_renders_allocation(monkeypatch, tmp_path):
+    from rh_wizard.models.allocation import (
+        AllocationRecommendation,
+        BucketRecommendation,
+        RecommendedPosition,
+    )
+
+    monkeypatch.setenv("RH_WIZARD_HOME", str(tmp_path))
+    d = tmp_path / "strategies"
+    d.mkdir(parents=True, exist_ok=True)
+    (d / "buck.yaml").write_text(
+        "id: buck\nname: Buck\nsignals_needed: [price]\n"
+        "buckets:\n  - id: ai\n    target_pct: 100\n    universe: [AAPL]\n"
+    )
+
+    class FakeRecommender:
+        def recommend(self, strategy, bucket_candidates, market, portfolio):
+            return AllocationRecommendation(
+                buckets=[
+                    BucketRecommendation(
+                        bucket_id="ai", positions=[RecommendedPosition(symbol="AAPL", weight="100")]
+                    )
+                ],
+                summary="ok",
+            )
+
+    monkeypatch.setattr(auth, "_build_broker", lambda settings: FakeBroker())
+    monkeypatch.setattr(run_module, "_build_llm", lambda settings: FakeStructuredLlm())
+    monkeypatch.setattr(run_module, "_build_recommender", lambda settings: FakeRecommender())
+    result = runner.invoke(app, ["run", "buck"])
+    assert result.exit_code == 0, result.output
+    assert "Allocation" in result.output
+    assert "AAPL" in result.output
+    assert "no orders" in result.output.lower()
