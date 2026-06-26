@@ -78,3 +78,29 @@ def test_record_research_is_idempotent_and_handles_empty():
         journal.record_research("run1", ResearchReport(sources=[Source(url="https://a")]))
         journal.record_research("run1", ResearchReport(sources=[]))  # re-record clears prior rows
         assert journal.research_sources("run1") == []
+
+
+def test_record_and_read_discovery():
+    from rh_wizard.models.compile import SuggestedTicker
+    from rh_wizard.models.discovery import DiscoveryResult
+
+    result = DiscoveryResult(
+        tickers=[SuggestedTicker(symbol="NVDA", rationale="ai"), SuggestedTicker(symbol="MSFT")],
+        sources=[Source(title="Morningstar", url="https://e/ai")],
+    )
+    with SqliteJournal(":memory:") as journal:
+        journal.record_discovery("run1", result)
+        assert [r["symbol"] for r in journal.discovered_universe("run1")] == ["NVDA", "MSFT"]
+        assert [r["url"] for r in journal.discovery_sources("run1")] == ["https://e/ai"]
+
+
+def test_record_discovery_is_idempotent_and_handles_empty():
+    from rh_wizard.models.compile import SuggestedTicker
+    from rh_wizard.models.discovery import DiscoveryResult
+
+    with SqliteJournal(":memory:") as journal:
+        journal.record_discovery("run1", DiscoveryResult(tickers=[SuggestedTicker(symbol="NVDA")]))
+        journal.record_discovery("run1", DiscoveryResult(tickers=[SuggestedTicker(symbol="MSFT")]))
+        assert [r["symbol"] for r in journal.discovered_universe("run1")] == ["MSFT"]  # replaced
+        journal.record_discovery("run1", DiscoveryResult())  # empty clears it
+        assert journal.discovered_universe("run1") == []

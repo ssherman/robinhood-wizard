@@ -10,7 +10,7 @@ vetted by a deterministic risk engine. Equities and ETFs only.
 
 ## Status
 
-Actively developed. **What works today (Phases 0–4c):**
+Actively developed. **What works today (Phases 0–4d):**
 
 - **Authentication** to a Robinhood Agentic Trading account (browser consent → cached, auto-refreshed token).
 - **Read-only portfolio + history** — reconcile live holdings, sync order history into a local journal.
@@ -22,6 +22,9 @@ Actively developed. **What works today (Phases 0–4c):**
 - **Natural-language strategy compiler** — `wizard compile <id> --text "..."` turns a plain
   description into a reviewable strategy YAML, using the LLM + web search to suggest a
   candidate universe (with citations). You review/edit the file, then `wizard run <id>`.
+- **Dynamic universe discovery** — a strategy with `discover: true` discovers fresh candidate
+  tickers from its `intent` each cycle (web-search-backed), unioned with any hand-picked
+  `universe` and your holdings. Write a thesis, the agent finds the names.
 
 **DryRun only.** There is **no order-execution path anywhere in the codebase yet** — `run`
 proposes and vets a plan, then stops. The risk engine is the hard gate and nothing can
@@ -204,6 +207,28 @@ engine rejected them on the merits** (a single position would breach the 20% max
 guardrail on a small account). Approved intents render in a "Proposed trades" table. Every
 run — approved, rejected, or aborted — is recorded in `~/.rh-wizard/wizard.db`.
 
+To let the agent assemble the universe itself, set `discover: true` and leave `universe`
+empty (or list a few core names to keep alongside the discovered ones):
+
+```yaml
+id: ai-discovered
+name: Discovered AI
+intent: Large-cap AI names with reasonable valuations.
+universe: []            # discovery fills this each cycle
+signals_needed: [price, average_volume, market_cap, pe_ratio]
+discover: true
+```
+
+```bash
+uv run --env-file .env wizard run ai-discovered
+```
+
+The cycle discovers candidates from `intent`, resolves their live data, researches and proposes
+a vetted plan — printing a "Discovered universe" line with citations. If discovery fails the
+cycle degrades (it proceeds with your explicit `universe` + holdings and notes the failure),
+and the risk engine still vets every proposed trade. **No orders are placed.** Discovery uses the
+web-search LLM, so provide your OpenAI key (e.g. via `--env-file .env`).
+
 ### Strategy file format
 
 | Field | Required | Meaning |
@@ -212,6 +237,8 @@ run — approved, rejected, or aborted — is recorded in `~/.rh-wizard/wizard.d
 | `name` | yes | Human-readable name |
 | `intent` | no | Free-text thesis handed to the research LLM |
 | `universe` | no | Explicit candidate tickers the agent may consider |
+| `discover` | no | If `true`, discover candidate tickers from `intent` each cycle (web-search-backed) and union them with `universe` + holdings. Default `false` |
+| `max_candidates` | no | Cap on discovered candidates per cycle (default `20`) |
 | `signals_needed` | no | Market signals to resolve (`price`, `average_volume`, `market_cap`, `pe_ratio`, `pb_ratio`, `sector`, `industry`, `week_52_high`, `week_52_low`, `dividend_yield`) |
 | `cadence` | no | Hint only in v1 (e.g. `weekly`) |
 | `risk_overrides` | no | Per-strategy risk tightening, merged onto the global defaults |
@@ -228,9 +255,10 @@ risk_overrides:
   max_position_pct: 15
 ```
 
-> `wizard compile` can *suggest* a `universe` from a prose theme (web-search-backed) for you
-> to review. Fully automatic, per-cycle theme→ticker discovery (so `intent` alone drives every
-> run) is a planned phase.
+> Two ways to get a universe from a theme: `wizard compile` *suggests* a `universe` once for
+> you to review/freeze; `discover: true` discovers one *dynamically every cycle* from `intent`.
+> Use either, or both (a reviewed core list plus live discovery around it). Allocation buckets
+> with target percentages are a planned phase.
 
 ## Risk guardrails
 
@@ -285,9 +313,9 @@ Design docs live in `docs/superpowers/specs/`; per-phase implementation plans in
 
 - **Done:** scaffold/auth (0) · read-only portfolio + journal (1) · risk engine (2) · data
   layer (3) · DryRun cycle skeleton (4a) · LLM research + plan (4b-1) · web/news search
-  (4b-2) · **natural-language strategy compiler (4c)**.
-- **Next:** theme→ticker universe discovery · order execution with Human-Approval /
-  Autonomous modes and kill-switch enforcement.
+  (4b-2) · natural-language strategy compiler (4c) · **dynamic universe discovery (4d)**.
+- **Next:** allocation buckets + allocation-aware planning · order execution with
+  Human-Approval / Autonomous modes and kill-switch enforcement.
 
 ## License
 

@@ -25,3 +25,5 @@ class Strategy(pydantic.BaseModel):
     cadence: str | None = None  # hint only in v1 (e.g. "weekly")
     risk_overrides: dict[str, object] = {}  # merged onto global RiskPolicy defaults
     web_research: bool = True  # Phase 4b-2: use web search in the research stage
+    discover: bool = False  # Phase 4d: discover candidate tickers from `intent` each cycle
+    max_candidates: int = 20  # Phase 4d: cap on discovered candidates per cycle

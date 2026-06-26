@@ -50,3 +50,9 @@ def test_compiled_strategy_schema_has_no_lookaround():
     from rh_wizard.models.compile import CompiledStrategy
 
     assert _lookaround_patterns(CompiledStrategy) == []
+
+
+def test_discovered_universe_schema_has_no_lookaround():
+    from rh_wizard.models.discovery import DiscoveredUniverse
+
+    assert _lookaround_patterns(DiscoveredUniverse) == []

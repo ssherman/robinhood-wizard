@@ -70,6 +70,7 @@ class _Result:
         self.report = report
         self.plan = None
         self.vetted = None
+        self.discovery = None
 
 
 def test_render_shows_sources():
@@ -78,3 +79,24 @@ def test_render_shows_sources():
     assert "Sources:" in out
     assert "Headline" in out
     assert "https://x/y" in out
+
+
+def test_render_shows_discovered_universe():
+    from rh_wizard.cli.render import render_cycle_result
+    from rh_wizard.core.cycle import CycleResult
+    from rh_wizard.models.compile import SuggestedTicker
+    from rh_wizard.models.cycle import CycleRun
+    from rh_wizard.models.discovery import DiscoveryResult
+    from rh_wizard.models.research import Source
+
+    run = CycleRun(run_id="r1", strategy_id="m", mode="dryrun", started_at="t", status="completed")
+    result = CycleResult(
+        run=run,
+        discovery=DiscoveryResult(
+            tickers=[SuggestedTicker(symbol="NVDA", rationale="ai")],
+            sources=[Source(title="Src", url="https://e/x")],
+        ),
+    )
+    out = render_cycle_result(result)
+    assert "Discovered universe: NVDA" in out
+    assert "https://e/x" in out

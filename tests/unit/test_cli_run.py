@@ -108,3 +108,32 @@ def test_run_web_research_uses_web_researcher(monkeypatch, tmp_path):
     assert result.exit_code == 0
     assert "AAPL" in result.output
     assert "news.example/aapl" in result.output  # sources rendered
+
+
+def test_run_discover_uses_discoverer_and_renders(monkeypatch, tmp_path):
+    from rh_wizard.models.compile import SuggestedTicker
+    from rh_wizard.models.discovery import DiscoveryResult
+    from rh_wizard.models.research import Source
+
+    monkeypatch.setenv("RH_WIZARD_HOME", str(tmp_path))
+    d = tmp_path / "strategies"
+    d.mkdir(parents=True, exist_ok=True)
+    (d / "disc.yaml").write_text(
+        "id: disc\nname: Disc\nintent: large-cap ai\nuniverse: []\n"
+        "signals_needed: [price]\ndiscover: true\nweb_research: false\n"
+    )
+
+    class FakeDiscoverer:
+        def discover(self, strategy):
+            return DiscoveryResult(
+                tickers=[SuggestedTicker(symbol="AAPL", rationale="ai")],
+                sources=[Source(title="Headline", url="https://news.example/aapl")],
+            )
+
+    monkeypatch.setattr(auth, "_build_broker", lambda settings: FakeBroker())
+    monkeypatch.setattr(run_module, "_build_llm", lambda settings: FakeStructuredLlm())
+    monkeypatch.setattr(run_module, "_build_discoverer", lambda settings: FakeDiscoverer())
+    result = runner.invoke(app, ["run", "disc"])
+    assert result.exit_code == 0, result.output
+    assert "Discovered universe" in result.output
+    assert "AAPL" in result.output

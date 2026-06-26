@@ -36,3 +36,19 @@ def test_strategy_forbids_unknown_fields():
 def test_strategy_web_research_defaults_true():
     assert Strategy(id="m", name="M").web_research is True
     assert Strategy(id="m", name="M", web_research=False).web_research is False
+
+
+def test_strategy_discover_defaults_false():
+    from rh_wizard.models.strategy import Strategy
+
+    s = Strategy(id="m", name="M")
+    assert s.discover is False
+    assert s.max_candidates == 20
+
+
+def test_strategy_discover_can_be_enabled():
+    from rh_wizard.models.strategy import Strategy
+
+    s = Strategy(id="m", name="M", discover=True, max_candidates=5)
+    assert s.discover is True
+    assert s.max_candidates == 5
