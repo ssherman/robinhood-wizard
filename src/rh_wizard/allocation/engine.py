@@ -24,6 +24,7 @@ from rh_wizard.models.risk import RiskPolicy
 from rh_wizard.models.strategy import Strategy
 
 _BUY = "buy"
+_SELL = "sell"
 
 
 def _norm(symbol: str) -> str:
@@ -107,6 +108,38 @@ def _split_buys(
     return intents
 
 
+def _trim_sells(
+    bucket_id: str,
+    member: dict[str, str],
+    held_value: dict[str, Decimal],
+    excess: Decimal,
+    market: dict[str, SymbolData],
+    allow_fractional: bool,
+) -> list[TradeIntent]:
+    if excess <= 0:
+        return []
+    in_bucket = {sym: v for sym, v in held_value.items() if member.get(sym) == bucket_id}
+    total = sum(in_bucket.values(), Decimal("0"))
+    if total <= 0:
+        return []
+    intents: list[TradeIntent] = []
+    for sym, value in in_bucket.items():
+        data = market.get(sym)
+        if data is None or data.price is None or data.price <= 0:
+            continue
+        dollars = excess * value / total
+        if dollars <= 0:
+            continue
+        if allow_fractional and bool(data.fractionable):
+            qty = dollars / data.price
+        else:
+            qty = (dollars / data.price).to_integral_value(rounding=ROUND_DOWN)
+        if qty <= 0:
+            continue
+        intents.append(TradeIntent(side=_SELL, symbol=sym, quantity=qty, limit_price=data.price))
+    return intents
+
+
 def allocate(
     strategy: Strategy,
     recommendation: AllocationRecommendation,
@@ -120,7 +153,8 @@ def allocate(
     member = _membership(strategy, recommendation)
     rec_by_bucket = {r.bucket_id: r for r in recommendation.buckets}
 
-    intents: list[TradeIntent] = []
+    buy_intents: list[TradeIntent] = []
+    sell_intents: list[TradeIntent] = []
     report_buckets: list[BucketAllocation] = []
 
     for bucket in strategy.buckets:
@@ -139,12 +173,27 @@ def allocate(
                 rec_by_bucket.get(bucket.id), budget - current, market, strategy.allow_fractional
             )
             if buys:
-                intents.extend(buys)
+                buy_intents.extend(buys)
                 action = "buy"
             else:
                 action = "no candidates"
-        else:  # overweight -> sells handled in Task 5
-            action = "hold (overweight, buy_only)"
+        else:  # overweight -> sell to trim (full mode only)
+            if strategy.rebalance_mode == "full":
+                sells = _trim_sells(
+                    bucket.id,
+                    member,
+                    held_value,
+                    current - budget,
+                    market,
+                    strategy.allow_fractional,
+                )
+                if sells:
+                    sell_intents.extend(sells)
+                    action = "sell"
+                else:
+                    action = "hold (overweight, buy_only)"
+            else:
+                action = "hold (overweight, buy_only)"
         report_buckets.append(
             BucketAllocation(
                 bucket_id=bucket.id,
@@ -159,4 +208,4 @@ def allocate(
 
     orphans = sorted(sym for sym in held_value if sym not in member)
     report = AllocationReport(buckets=report_buckets, orphans=orphans, investable=investable)
-    return TradePlan(intents=intents, rationale=recommendation.summary), report
+    return TradePlan(intents=sell_intents + buy_intents, rationale=recommendation.summary), report

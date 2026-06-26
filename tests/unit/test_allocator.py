@@ -213,3 +213,129 @@ def test_orphan_holdings_reported_and_untouched():
     )
     assert "TSLA" in report.orphans
     assert all(i.symbol != "TSLA" for i in plan.intents)
+
+
+def test_overweight_full_mode_trims_proportionally():
+    # cash 100 + held 900 -> portfolio 1000, reserve 10% -> investable 900. AI target 50% ->
+    # budget 450. Hold NVDA 600 + MSFT 300 in AI = 900 (current 100% of investable). Excess 450,
+    # trimmed proportionally 2:1 -> sell $300 NVDA (3 sh), $150 MSFT (1.5 sh).
+    strat = _strategy(
+        [Bucket(id="ai", target_pct="50")], rebalance_mode="full", rebalance_band_pct="5"
+    )
+    rec = AllocationRecommendation(
+        buckets=[
+            BucketRecommendation(
+                bucket_id="ai",
+                positions=[
+                    RecommendedPosition(symbol="NVDA"),
+                    RecommendedPosition(symbol="MSFT"),
+                ],
+            )
+        ]
+    )
+    held = [
+        Position(
+            symbol="NVDA", quantity="6", average_cost="100", cost_basis="600", market_value="600"
+        ),
+        Position(
+            symbol="MSFT", quantity="3", average_cost="100", cost_basis="300", market_value="300"
+        ),
+    ]
+    plan, report = allocate(
+        strat,
+        rec,
+        RiskPolicy(),
+        _portfolio(cash="100", positions=held),
+        _market({"NVDA": "100", "MSFT": "100"}, fractionable=True),
+    )
+    sells = {i.symbol: i for i in plan.intents}
+    assert all(i.side == "sell" for i in plan.intents)
+    assert sells["NVDA"].quantity == Decimal("3")  # $300 / $100
+    assert sells["MSFT"].quantity == Decimal("1.5")  # $150 / $100 (fractional ok)
+    assert report.buckets[0].action == "sell"
+
+
+def test_overweight_buy_only_does_not_sell():
+    strat = _strategy(
+        [Bucket(id="ai", target_pct="50")], rebalance_mode="buy_only", rebalance_band_pct="5"
+    )
+    rec = AllocationRecommendation(
+        buckets=[
+            BucketRecommendation(bucket_id="ai", positions=[RecommendedPosition(symbol="NVDA")])
+        ]
+    )
+    held = [
+        Position(
+            symbol="NVDA", quantity="9", average_cost="100", cost_basis="900", market_value="900"
+        )
+    ]
+    plan, report = allocate(
+        strat,
+        rec,
+        RiskPolicy(),
+        _portfolio(cash="0", positions=held, total="900"),
+        _market({"NVDA": "100"}),
+    )
+    assert plan.intents == []
+    assert report.buckets[0].action == "hold (overweight, buy_only)"
+
+
+def test_whole_share_sell_floors():
+    strat = _strategy(
+        [Bucket(id="ai", target_pct="50")],
+        rebalance_mode="full",
+        rebalance_band_pct="5",
+        allow_fractional=False,
+    )
+    rec = AllocationRecommendation(
+        buckets=[
+            BucketRecommendation(bucket_id="ai", positions=[RecommendedPosition(symbol="NVDA")])
+        ]
+    )
+    # portfolio 900, reserve 10% -> investable 810, target 50% -> budget 405; hold 900 ->
+    # excess 495, price 100 -> sell floor(495/100)=4.
+    held = [
+        Position(
+            symbol="NVDA", quantity="9", average_cost="100", cost_basis="900", market_value="900"
+        )
+    ]
+    plan, _ = allocate(
+        strat,
+        rec,
+        RiskPolicy(),
+        _portfolio(cash="0", positions=held, total="900"),
+        _market({"NVDA": "100"}, fractionable=False),
+    )
+    assert plan.intents[0].side == "sell"
+    assert plan.intents[0].quantity == Decimal("4")
+
+
+def test_sells_are_ordered_before_buys():
+    # AI overweight (sell), energy underweight (buy). investable 900.
+    strat = _strategy(
+        [Bucket(id="ai", target_pct="30"), Bucket(id="energy", target_pct="30")],
+        rebalance_mode="full",
+        rebalance_band_pct="5",
+    )
+    rec = AllocationRecommendation(
+        buckets=[
+            BucketRecommendation(bucket_id="ai", positions=[RecommendedPosition(symbol="NVDA")]),
+            BucketRecommendation(bucket_id="energy", positions=[RecommendedPosition(symbol="XOM")]),
+        ]
+    )
+    held = [
+        Position(
+            symbol="NVDA", quantity="6", average_cost="100", cost_basis="600", market_value="600"
+        )
+    ]
+    plan, _ = allocate(
+        strat,
+        rec,
+        RiskPolicy(),
+        _portfolio(cash="400", positions=held, total="1000"),
+        _market({"NVDA": "100", "XOM": "100"}),
+    )
+    sides = [i.side for i in plan.intents]
+    assert sides[0] == "sell"  # NVDA trim comes first
+    assert "buy" in sides  # XOM buy after
+    assert sides.index("sell") < sides.index("buy")
