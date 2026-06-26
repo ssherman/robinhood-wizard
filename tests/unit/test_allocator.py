@@ -15,7 +15,7 @@ from rh_wizard.models.strategy import Strategy
 
 def _portfolio(cash="1000", positions=None, total=None):
     pos = positions or []
-    held = sum((p.market_value or p.cost_basis) for p in pos)
+    held = sum((p.market_value if p.market_value is not None else p.cost_basis) for p in pos)
     return PortfolioState(
         account_number="ACC1",
         positions=pos,
@@ -166,3 +166,50 @@ def test_unpriced_recommended_symbol_is_skipped():
     market = _market({"NVDA": "100"})  # GHOST unpriced
     plan, _ = allocate(strat, rec, RiskPolicy(), _portfolio(cash="1000"), market)
     assert [i.symbol for i in plan.intents] == ["NVDA"]
+
+
+def test_duplicate_lots_are_summed_for_current_value():
+    # cash 800 + two NVDA lots ($100 each) -> portfolio 1000, investable 900. AI target 100% ->
+    # budget 900. Current NVDA = 100+100 = 200 (both lots summed) -> buy shortfall 700 (not 800).
+    strat = _strategy([Bucket(id="ai", target_pct="100")])
+    rec = AllocationRecommendation(
+        buckets=[
+            BucketRecommendation(bucket_id="ai", positions=[RecommendedPosition(symbol="NVDA")])
+        ]
+    )
+    nvda_lot = Position(
+        symbol="NVDA", quantity="1", average_cost="100", cost_basis="100", market_value="100"
+    )
+    held = [nvda_lot, nvda_lot]
+    plan, report = allocate(
+        strat, rec, RiskPolicy(), _portfolio(cash="800", positions=held), _market({"NVDA": "100"})
+    )
+    assert plan.intents[0].amount == Decimal("700")
+    assert report.buckets[0].action == "buy"
+
+
+def test_orphan_holdings_reported_and_untouched():
+    # TSLA is held but belongs to no bucket -> reported as an orphan, never traded.
+    strat = _strategy([Bucket(id="ai", target_pct="100")])
+    rec = AllocationRecommendation(
+        buckets=[
+            BucketRecommendation(bucket_id="ai", positions=[RecommendedPosition(symbol="NVDA")])
+        ]
+    )
+    held = [
+        Position(
+            symbol="NVDA", quantity="1", average_cost="100", cost_basis="100", market_value="100"
+        ),
+        Position(
+            symbol="TSLA", quantity="1", average_cost="100", cost_basis="100", market_value="100"
+        ),
+    ]
+    plan, report = allocate(
+        strat,
+        rec,
+        RiskPolicy(),
+        _portfolio(cash="800", positions=held),
+        _market({"NVDA": "100", "TSLA": "100"}),
+    )
+    assert "TSLA" in report.orphans
+    assert all(i.symbol != "TSLA" for i in plan.intents)

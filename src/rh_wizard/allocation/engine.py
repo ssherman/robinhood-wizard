@@ -41,10 +41,12 @@ def _portfolio_value(portfolio: PortfolioState) -> Decimal:
 
 
 def _held_value(portfolio: PortfolioState) -> dict[str, Decimal]:
-    return {
-        _norm(p.symbol): (p.market_value if p.market_value is not None else p.cost_basis)
-        for p in portfolio.positions
-    }
+    out: dict[str, Decimal] = {}
+    for p in portfolio.positions:
+        sym = _norm(p.symbol)
+        value = p.market_value if p.market_value is not None else p.cost_basis
+        out[sym] = out.get(sym, Decimal("0")) + value
+    return out
 
 
 def _membership(strategy: Strategy, recommendation: AllocationRecommendation) -> dict[str, str]:
