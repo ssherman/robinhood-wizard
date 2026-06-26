@@ -119,14 +119,15 @@ def test_compile_slug_dedupes_collisions():
             compiled = output_model(
                 name="Dup",
                 buckets=[
-                    CompiledBucket(name="AI", target_pct="50"),
-                    CompiledBucket(name="A I", target_pct="50"),  # slugs to "a-i" vs "ai"
+                    CompiledBucket(name="Large-Cap", target_pct="50"),  # -> "large-cap"
+                    CompiledBucket(name="Large Cap", target_pct="50"),  # -> "large-cap" (collision)
                 ],
             )
             return compiled, []
 
     s = LlmStrategyCompiler(DupLlm()).compile("dup", "x").strategy
     ids = [b.id for b in s.buckets]
+    assert ids == ["large-cap", "large-cap-2"]  # second collision gets a numeric suffix
     assert len(set(ids)) == len(ids)  # all unique
 
 
