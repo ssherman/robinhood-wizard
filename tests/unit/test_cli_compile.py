@@ -173,6 +173,46 @@ def test_compile_over_allocation_exits_nonzero(monkeypatch, tmp_path):
     assert not (tmp_path / "strategies" / "over.yaml").exists()
 
 
+class FakeEmptyBucketCompiler:
+    def compile(self, strategy_id, prose):
+        from decimal import Decimal
+
+        from rh_wizard.models.bucket import Bucket
+        from rh_wizard.models.compile import CompiledBucket
+
+        strategy = Strategy(
+            id=strategy_id,
+            name="Sparse",
+            intent=prose,
+            buckets=[
+                Bucket(id="ai", name="AI", target_pct=Decimal("40"), universe=["NVDA"]),
+                Bucket(id="rare", name="Rare", target_pct=Decimal("20")),
+            ],  # no tickers
+            risk_overrides={},
+        )
+        return CompileResult(
+            strategy=strategy,
+            tickers=[],
+            sources=[],
+            buckets=[
+                CompiledBucket(
+                    name="AI", target_pct=Decimal("40"), tickers=[SuggestedTicker(symbol="NVDA")]
+                ),
+                CompiledBucket(name="Rare", target_pct=Decimal("20")),
+            ],  # no tickers
+        )
+
+
+def test_compile_flags_empty_bucket(monkeypatch, tmp_path):
+    monkeypatch.setenv("RH_WIZARD_HOME", str(tmp_path))
+    monkeypatch.setattr(
+        compile_module, "_build_compiler", lambda settings: FakeEmptyBucketCompiler()
+    )
+    result = runner.invoke(app, ["compile", "sparse", "--text", "40% AI, 20% rare"])
+    assert result.exit_code == 0, result.output
+    assert "will sit as cash" in result.output  # empty bucket flagged
+
+
 @pytest.mark.skipif(
     not (os.environ.get("RH_WIZARD_LIVE") and os.environ.get("OPENAI_API_KEY")),
     reason="live test: needs RH_WIZARD_LIVE=1 and OPENAI_API_KEY",

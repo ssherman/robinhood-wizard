@@ -51,6 +51,8 @@ def _render_summary(result: CompileResult, path: Path, strategy_id: str) -> str:
             for t in b.tickers:
                 entry = f"    {t.symbol} - {t.rationale}" if t.rationale else f"    {t.symbol}"
                 lines.append(entry)
+            if not b.tickers:
+                lines.append("    (no tickers found — this bucket's target will sit as cash)")
     else:
         lines.append("Suggested universe:")
         for t in result.tickers:

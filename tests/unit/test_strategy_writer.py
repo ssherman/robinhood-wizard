@@ -126,3 +126,24 @@ def test_bucketed_yaml_header_groups_tickers_per_bucket(tmp_path):
     # the active YAML carries buckets, not a top-level universe
     assert "buckets:" in text
     assert "\nuniverse:" not in text
+
+
+def test_bucketed_yaml_round_trips_non_integral_decimals(tmp_path):
+    from decimal import Decimal
+
+    from rh_wizard.models.bucket import Bucket
+
+    strategy = Strategy(
+        id="frac",
+        name="Frac",
+        signals_needed={Signal.PRICE, Signal.FRACTIONABLE},
+        rebalance_band_pct=Decimal("2.5"),
+        buckets=[Bucket(id="a", name="A", target_pct=Decimal("12.5"), universe=["NVDA"])],
+        risk_overrides={},
+    )
+    result = CompileResult(strategy=strategy, tickers=[], sources=[], buckets=[])
+    write_strategy_yaml(tmp_path / "frac.yaml", result, "fractional targets")
+    loaded = StrategyRegistry(tmp_path).load("frac")
+    assert loaded == result.strategy
+    assert loaded.buckets[0].target_pct == Decimal("12.5")  # exact, no float drift
+    assert loaded.rebalance_band_pct == Decimal("2.5")
