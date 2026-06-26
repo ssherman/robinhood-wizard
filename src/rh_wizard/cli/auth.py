@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 import webbrowser
 from urllib.parse import parse_qs, urlsplit
 
@@ -23,17 +24,26 @@ def _redirect_uri(settings: Settings) -> str:
     return f"http://{settings.oauth_redirect_host}:{settings.oauth_redirect_port}/callback"
 
 
-async def _redirect_handler(url: str) -> None:
-    """Open the Robinhood consent page, and always print the URL as a fallback.
+def _is_wsl() -> bool:
+    """True under WSL, where launching a Linux browser is broken (SSL/Fontconfig errors) and
+    can't reach the Windows host anyway — print the URL instead and let the user open it in
+    their Windows browser."""
+    return "microsoft" in os.uname().release.lower() or bool(os.environ.get("WSL_DISTRO_NAME"))
 
-    Async because the mcp SDK awaits this handler.
+
+async def _redirect_handler(url: str) -> None:
+    """Print the Robinhood consent URL (and open a browser only when it's safe to).
+
+    Async because the mcp SDK awaits this handler. Under WSL we never auto-open a browser:
+    the paste-based flow needs no local browser, and a WSL browser launch only adds noise.
     """
-    typer.echo("\nAuthorize Robinhood Wizard in your browser (opening it now):\n")
+    typer.echo("\nAuthorize Robinhood Wizard by opening this URL in your browser:\n")
     typer.echo(f"  {url}\n")
-    try:
-        webbrowser.open(url)
-    except Exception:  # browser launch is best-effort; the printed URL is the fallback
-        pass
+    if not _is_wsl():
+        try:
+            webbrowser.open(url)
+        except Exception:  # browser launch is best-effort; the printed URL is the fallback
+            pass
 
 
 async def _paste_callback_handler() -> tuple[str, str | None]:

@@ -15,6 +15,10 @@ class Settings(pydantic.BaseModel):
     model_config = pydantic.ConfigDict(extra="forbid")
 
     robinhood_mcp_url: str = "https://agent.robinhood.com/mcp/trading"
+    # Seconds the MCP client waits for initialization. The default must comfortably exceed an
+    # interactive OAuth consent (browser approval + 2FA + paste); Strands' own default of 30s
+    # is far too short and aborts the first-time consent.
+    mcp_startup_timeout: int = 300
     model_provider: str = "openai"
     model_id: str = "gpt-5.5"
     oauth_redirect_host: str = "localhost"

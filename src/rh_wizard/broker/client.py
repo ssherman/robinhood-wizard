@@ -174,4 +174,6 @@ def make_broker_client(settings: Settings, oauth_provider: Any) -> BrokerClient:
         http = httpx.AsyncClient(auth=oauth_provider, follow_redirects=True)
         return streamable_http_client(settings.robinhood_mcp_url, http_client=http)
 
-    return BrokerClient(MCPClient(transport))
+    # startup_timeout must cover an interactive OAuth consent on the first run; Strands'
+    # 30s default is too short for browser approval + 2FA + paste (silent refresh is fast).
+    return BrokerClient(MCPClient(transport, startup_timeout=settings.mcp_startup_timeout))
