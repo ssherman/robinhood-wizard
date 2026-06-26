@@ -28,6 +28,16 @@ def fmt_num(value) -> str:
     return "-" if value is None else str(value)
 
 
+def _intent_amount(intent):
+    """Dollar size of a trade intent: the explicit notional amount (fractional orders), else
+    quantity * limit price (whole-share buys and sells). None when neither is determinable."""
+    if intent.amount is not None:
+        return intent.amount
+    if intent.quantity is not None and intent.limit_price is not None:
+        return intent.quantity * intent.limit_price
+    return None
+
+
 def render_positions(state) -> str:
     """Render a PortfolioState as a table plus a summary line."""
     from rich.table import Table
@@ -187,10 +197,16 @@ def render_cycle_result(result) -> str:
         table.add_column("Symbol")
         table.add_column("Qty", justify="right")
         table.add_column("Limit", justify="right")
+        table.add_column("Amount", justify="right")
         table.add_column("Rationale")
         for i in vetted.approved:
             table.add_row(
-                i.side, i.symbol, fmt_num(i.quantity), fmt_money(i.limit_price), i.rationale or "-"
+                i.side,
+                i.symbol,
+                fmt_num(i.quantity),
+                fmt_money(i.limit_price),
+                fmt_money(_intent_amount(i)),
+                i.rationale or "-",
             )
         lines.append(render_to_str(table).rstrip("\n"))
 

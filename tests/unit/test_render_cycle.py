@@ -22,6 +22,25 @@ def _run(status="completed", note=""):
     )
 
 
+def test_render_approved_table_shows_amount_for_fractional_and_whole_buys():
+    result = CycleResult(
+        run=_run(),
+        vetted=VettedPlan(
+            approved=[
+                # fractional buy: a notional dollar amount, no whole share quantity
+                TradeIntent(side="buy", symbol="MU", amount="180.00", limit_price="1122.99"),
+                # whole-share buy: amount derived as quantity * limit = 4 * 42.97 = 171.88
+                TradeIntent(side="buy", symbol="SNY", quantity="4", limit_price="42.97"),
+            ],
+        ),
+    )
+    out = render_cycle_result(result)
+    assert "Amount" in out  # new column header
+    assert "$180.00" in out  # fractional buy's notional amount
+    assert "$171.88" in out  # whole-share buy: 4 * 42.97
+    assert "-" in out  # fractional buy still shows "-" for Qty
+
+
 def test_render_completed_run_shows_plan_and_dryrun_footer():
     result = CycleResult(
         run=_run(),
