@@ -302,6 +302,17 @@ def test_bucketed_cycle_degrades_when_bucket_discovery_raises():
         assert "AAPL" in result.market.symbols  # explicit bucket universe still resolved
 
 
+def test_bucketed_cycle_aborts_when_recommender_missing():
+    strategy = _bucketed_strategy()
+    with SqliteJournal(":memory:") as journal:
+        deps = _deps(journal)  # recommender defaults to None
+        with deps.broker:
+            result = run_cycle(strategy, deps)
+        assert result.run.status == "aborted"
+        assert "requires a recommender" in result.run.note
+        assert journal.recent_runs()[0].status == "aborted"
+
+
 def test_flat_cycle_unchanged_has_no_allocation():
     strategy = Strategy(id="m", name="M", universe=["AAPL"], signals_needed={Signal.PRICE})
     with SqliteJournal(":memory:") as journal:

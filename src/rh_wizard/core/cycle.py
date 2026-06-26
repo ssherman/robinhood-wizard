@@ -71,7 +71,7 @@ def _norm(symbol: str) -> str:
 def _bucket_discovery_view(strategy: Strategy, bucket: Bucket) -> Strategy:
     """A minimal flat Strategy so the existing discoverer can run for one bucket's theme."""
     return Strategy(
-        id=strategy.id,
+        id=f"{strategy.id}:{bucket.id}",
         name=f"{strategy.name}: {bucket.name or bucket.id}",
         intent=bucket.intent,
         max_candidates=bucket.max_candidates,
@@ -191,6 +191,17 @@ def _run_bucketed(
     if notes:
         market = market.model_copy(update={"notes": [*market.notes, *notes]})
 
+    if deps.recommender is None:
+        run = run.model_copy(
+            update={
+                "status": "aborted",
+                "finished_at": _now(),
+                "note": "bucketed strategy requires a recommender",
+            }
+        )
+        deps.journal.record_run(run)
+        return CycleResult(run=run, portfolio=portfolio, market=market)
+
     try:
         recommendation = deps.recommender.recommend(strategy, candidates, market, portfolio)
         policy = build_effective_policy(
@@ -203,7 +214,7 @@ def _run_bucketed(
             update={
                 "status": "aborted",
                 "finished_at": _now(),
-                "note": f"recommend/allocate failed: {exc}",
+                "note": f"recommend/allocate/vet failed: {exc}",
             }
         )
         deps.journal.record_run(run)
