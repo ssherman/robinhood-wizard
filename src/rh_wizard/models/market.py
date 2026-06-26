@@ -38,6 +38,7 @@ class SymbolData(pydantic.BaseModel):
     week_52_high: Decimal | None = None
     week_52_low: Decimal | None = None
     dividend_yield: Decimal | None = None
+    fractionable: bool | None = None  # broker supports fractional shares for this symbol
 
 
 class MarketContext(pydantic.BaseModel):

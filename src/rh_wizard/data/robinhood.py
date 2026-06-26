@@ -27,6 +27,7 @@ _PROVIDED: frozenset[Signal] = frozenset(
         Signal.WEEK_52_HIGH,
         Signal.WEEK_52_LOW,
         Signal.DIVIDEND_YIELD,
+        Signal.FRACTIONABLE,
     }
 )
 
@@ -76,11 +77,24 @@ def _parse_fundamentals(raw: dict) -> dict[str, Any]:
     }
 
 
+def _parse_fractionable(raw: dict) -> bool | None:
+    """Map a Robinhood tradability row to the fractionable flag. Unknown ⇒ None (safe)."""
+    val = _first(raw, "fractional_tradability", "tradeable_fractional", "fractional")
+    if isinstance(val, bool):
+        return val
+    if isinstance(val, str):
+        return val.strip().lower() in ("tradable", "tradeable", "true", "yes")
+    return None
+
+
 class RobinhoodDataSource:
     name = "robinhood"
 
-    def __init__(self, broker: Any) -> None:
+    def __init__(self, broker: Any, account_number: str | None = None) -> None:
         self._broker = broker
+        # FRACTIONABLE comes from get_equity_tradability, which REQUIRES an account number.
+        # Without one we skip that call and leave fractionable=None (whole-share-safe default).
+        self._account_number = account_number
 
     def provides(self) -> set[Signal]:
         return set(_PROVIDED)
@@ -97,11 +111,17 @@ class RobinhoodDataSource:
                 if sym in fields:
                     fields[sym]["price"] = _quote_price(q)
 
-        # Any non-price provided signal is sourced from the fundamentals call.
-        if wanted - {Signal.PRICE}:
+        # Any non-price, non-fractionable provided signal is sourced from the fundamentals call.
+        if wanted - {Signal.PRICE, Signal.FRACTIONABLE}:
             for row in self._broker.get_equity_fundamentals(symbols):
                 sym = row.get("symbol")
                 if sym in fields:
                     fields[sym].update(_parse_fundamentals(row))
+
+        if Signal.FRACTIONABLE in wanted and self._account_number is not None:
+            for row in self._broker.get_equity_tradability(self._account_number, symbols):
+                sym = row.get("symbol")
+                if sym in fields:
+                    fields[sym]["fractionable"] = _parse_fractionable(row)
 
         return {sym: SymbolData(symbol=sym, **vals) for sym, vals in fields.items()}

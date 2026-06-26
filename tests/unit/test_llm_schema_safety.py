@@ -56,3 +56,9 @@ def test_discovered_universe_schema_has_no_lookaround():
     from rh_wizard.models.discovery import DiscoveredUniverse
 
     assert _lookaround_patterns(DiscoveredUniverse) == []
+
+
+def test_allocation_recommendation_schema_has_no_lookaround():
+    from rh_wizard.models.allocation import AllocationRecommendation
+
+    assert _lookaround_patterns(AllocationRecommendation) == []

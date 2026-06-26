@@ -10,6 +10,7 @@ import sqlite3
 from decimal import Decimal
 from pathlib import Path
 
+from rh_wizard.models.allocation import AllocationRecommendation, AllocationReport
 from rh_wizard.models.cycle import CycleRun
 from rh_wizard.models.discovery import DiscoveryResult
 from rh_wizard.models.plan import TradeIntent, VettedPlan
@@ -64,6 +65,25 @@ CREATE TABLE IF NOT EXISTS discovered_universe (
     PRIMARY KEY (run_id, seq)
 );
 CREATE TABLE IF NOT EXISTS discovery_sources (
+    run_id TEXT NOT NULL,
+    seq    INTEGER NOT NULL,
+    title  TEXT,
+    url    TEXT NOT NULL,
+    PRIMARY KEY (run_id, seq)
+);
+CREATE TABLE IF NOT EXISTS allocation_report (
+    run_id      TEXT NOT NULL,
+    seq         INTEGER NOT NULL,
+    bucket_id   TEXT NOT NULL,
+    name        TEXT,
+    target_pct  TEXT NOT NULL,
+    current_pct TEXT NOT NULL,
+    drift_pct   TEXT NOT NULL,
+    within_band INTEGER NOT NULL,
+    action      TEXT NOT NULL,
+    PRIMARY KEY (run_id, seq)
+);
+CREATE TABLE IF NOT EXISTS recommendation_sources (
     run_id TEXT NOT NULL,
     seq    INTEGER NOT NULL,
     title  TEXT,
@@ -220,6 +240,56 @@ class SqliteJournal:
     def discovery_sources(self, run_id: str) -> list[dict]:
         cur = self._conn.execute(
             "SELECT * FROM discovery_sources WHERE run_id = ? ORDER BY seq", (run_id,)
+        )
+        return [dict(row) for row in cur.fetchall()]
+
+    def record_allocation(
+        self, run_id: str, report: AllocationReport, recommendation: AllocationRecommendation
+    ) -> None:
+        self._conn.execute("DELETE FROM allocation_report WHERE run_id = ?", (run_id,))
+        self._conn.execute("DELETE FROM recommendation_sources WHERE run_id = ?", (run_id,))
+        brows = [
+            {
+                "run_id": run_id,
+                "seq": i,
+                "bucket_id": b.bucket_id,
+                "name": b.name,
+                "target_pct": str(b.target_pct),
+                "current_pct": str(b.current_pct),
+                "drift_pct": str(b.drift_pct),
+                "within_band": 1 if b.within_band else 0,
+                "action": b.action,
+            }
+            for i, b in enumerate(report.buckets)
+        ]
+        if brows:
+            self._conn.executemany(
+                "INSERT INTO allocation_report (run_id, seq, bucket_id, name, target_pct, "
+                "current_pct, drift_pct, within_band, action) VALUES (:run_id, :seq, :bucket_id, "
+                ":name, :target_pct, :current_pct, :drift_pct, :within_band, :action);",
+                brows,
+            )
+        srows = [
+            {"run_id": run_id, "seq": i, "title": s.title, "url": s.url}
+            for i, s in enumerate(recommendation.sources)
+        ]
+        if srows:
+            self._conn.executemany(
+                "INSERT INTO recommendation_sources (run_id, seq, title, url) "
+                "VALUES (:run_id, :seq, :title, :url);",
+                srows,
+            )
+        self._conn.commit()
+
+    def allocation_report(self, run_id: str) -> list[dict]:
+        cur = self._conn.execute(
+            "SELECT * FROM allocation_report WHERE run_id = ? ORDER BY seq", (run_id,)
+        )
+        return [dict(row) for row in cur.fetchall()]
+
+    def recommendation_sources(self, run_id: str) -> list[dict]:
+        cur = self._conn.execute(
+            "SELECT * FROM recommendation_sources WHERE run_id = ? ORDER BY seq", (run_id,)
         )
         return [dict(row) for row in cur.fetchall()]
 

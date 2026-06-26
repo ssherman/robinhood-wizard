@@ -1,3 +1,6 @@
+import os
+
+import pytest
 from typer.testing import CliRunner
 
 from rh_wizard.cli import auth
@@ -45,6 +48,9 @@ class FakeBroker:
             {"symbol": s, "average_volume": "50000000", "market_cap": "3000000000000"}
             for s in symbols
         ]
+
+    def get_equity_tradability(self, account_number, symbols):
+        return [{"symbol": s, "fractional_tradability": "tradable"} for s in symbols]
 
 
 def _write_strategy(home):
@@ -137,3 +143,58 @@ def test_run_discover_uses_discoverer_and_renders(monkeypatch, tmp_path):
     assert result.exit_code == 0, result.output
     assert "Discovered universe" in result.output
     assert "AAPL" in result.output
+
+
+def test_run_bucketed_uses_recommender_and_renders_allocation(monkeypatch, tmp_path):
+    from rh_wizard.models.allocation import (
+        AllocationRecommendation,
+        BucketRecommendation,
+        RecommendedPosition,
+    )
+
+    monkeypatch.setenv("RH_WIZARD_HOME", str(tmp_path))
+    d = tmp_path / "strategies"
+    d.mkdir(parents=True, exist_ok=True)
+    (d / "buck.yaml").write_text(
+        "id: buck\nname: Buck\nsignals_needed: [price]\n"
+        "buckets:\n  - id: ai\n    target_pct: 100\n    universe: [AAPL]\n"
+    )
+
+    class FakeRecommender:
+        def recommend(self, strategy, bucket_candidates, market, portfolio):
+            return AllocationRecommendation(
+                buckets=[
+                    BucketRecommendation(
+                        bucket_id="ai", positions=[RecommendedPosition(symbol="AAPL", weight="100")]
+                    )
+                ],
+                summary="ok",
+            )
+
+    monkeypatch.setattr(auth, "_build_broker", lambda settings: FakeBroker())
+    monkeypatch.setattr(run_module, "_build_llm", lambda settings: FakeStructuredLlm())
+    monkeypatch.setattr(run_module, "_build_recommender", lambda settings: FakeRecommender())
+    result = runner.invoke(app, ["run", "buck"])
+    assert result.exit_code == 0, result.output
+    assert "Allocation" in result.output
+    assert "AAPL" in result.output
+    assert "no orders" in result.output.lower()
+
+
+@pytest.mark.skipif(
+    not (os.environ.get("RH_WIZARD_LIVE") and os.environ.get("OPENAI_API_KEY")),
+    reason="live test: needs RH_WIZARD_LIVE=1 and OPENAI_API_KEY",
+)
+def test_live_bucketed_cycle_completes_without_orders(monkeypatch, tmp_path):
+    monkeypatch.setenv("RH_WIZARD_HOME", str(tmp_path))
+    d = tmp_path / "strategies"
+    d.mkdir(parents=True, exist_ok=True)
+    (d / "live.yaml").write_text(
+        "id: live\nname: Live\nsignals_needed: [price, fractionable]\n"
+        "buckets:\n  - id: ai\n    target_pct: 50\n    intent: large-cap AI leaders\n"
+        "    discover: true\n    max_candidates: 5\n"
+    )
+    monkeypatch.setattr(auth, "_build_broker", lambda settings: FakeBroker())
+    result = runner.invoke(app, ["run", "live"])
+    assert result.exit_code == 0, result.output
+    assert "DryRun" in result.output and "no orders" in result.output.lower()

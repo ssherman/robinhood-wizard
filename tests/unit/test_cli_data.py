@@ -28,6 +28,9 @@ class FakeBroker:
             for s in symbols
         ]
 
+    def get_equity_tradability(self, symbols):
+        return [{"symbol": s, "fractional_tradability": "tradable"} for s in symbols]
+
 
 def test_data_command_renders_resolved_market_data(monkeypatch, tmp_path):
     monkeypatch.setenv("RH_WIZARD_HOME", str(tmp_path))  # isolate from real config

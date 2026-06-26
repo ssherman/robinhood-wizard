@@ -1,0 +1,32 @@
+# strategies.example/sample-buckets.yaml
+# Copy to ~/.rh-wizard/strategies/ and run with:
+#   uv run --env-file .env wizard run sample-buckets
+# A *bucketed* thematic-allocation strategy: each bucket is a theme with a target % of
+# investable capital. The LLM recommends which tickers fit each bucket and their relative
+# weights; a deterministic allocator sizes positions to hit the targets; the risk engine vets
+# every order. Buckets are mutually exclusive with a flat top-level `universe`/`discover`.
+id: sample-buckets
+name: Sample Buckets (example)
+signals_needed: [price, average_volume, market_cap, pe_ratio, fractionable]
+cadence: weekly
+# Rebalance behavior (all per-strategy, shown with their defaults):
+allow_fractional: true      # size fractionally when Robinhood supports it for a symbol
+rebalance_mode: full        # full = buy + sell-to-trim; buy_only = never sells
+rebalance_band_pct: 5       # only trade a bucket once it drifts more than 5 points off target
+buckets:
+  - id: ai
+    name: AI
+    target_pct: 40
+    intent: Large-cap AI and semiconductor leaders with durable demand.
+    discover: true          # discover candidate tickers for this theme each cycle
+    max_candidates: 15
+  - id: energy
+    name: Energy
+    target_pct: 20
+    intent: Large-cap energy producers with strong free cash flow.
+    universe: [XOM, CVX]    # or list tickers explicitly instead of discovering
+  - id: broad
+    name: Broad market
+    target_pct: 20
+    universe: [VOO]
+# Targets sum to 80%; the remaining 20% of investable stays as extra cash.

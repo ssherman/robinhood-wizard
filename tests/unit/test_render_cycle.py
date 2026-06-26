@@ -80,3 +80,45 @@ def test_render_no_trades_message_only_when_nothing_proposed():
     out = render_cycle_result(CycleResult(run=_run(), vetted=VettedPlan()))
     assert "No trades proposed." in out
     assert "DryRun" in out
+
+
+def test_render_includes_allocation_block():
+    from decimal import Decimal
+
+    from rh_wizard.cli.render import render_cycle_result
+    from rh_wizard.core.cycle import CycleResult
+    from rh_wizard.models.allocation import (
+        AllocationRecommendation,
+        AllocationReport,
+        BucketAllocation,
+    )
+    from rh_wizard.models.cycle import CycleRun
+    from rh_wizard.models.plan import VettedPlan
+    from rh_wizard.models.research import Source
+
+    run = CycleRun(run_id="r1", strategy_id="b", mode="dryrun", started_at="t", status="completed")
+    result = CycleResult(
+        run=run,
+        vetted=VettedPlan(),
+        allocation=AllocationReport(
+            buckets=[
+                BucketAllocation(
+                    bucket_id="ai",
+                    name="AI",
+                    target_pct=Decimal("40"),
+                    current_pct=Decimal("30"),
+                    drift_pct=Decimal("-10"),
+                    within_band=False,
+                    action="buy",
+                )
+            ],
+            orphans=["TSLA"],
+            investable=Decimal("900"),
+        ),
+        recommendation=AllocationRecommendation(sources=[Source(title="N", url="https://e/x")]),
+    )
+    out = render_cycle_result(result)
+    assert "Allocation" in out
+    assert "AI" in out and "buy" in out
+    assert "TSLA" in out  # orphan listed
+    assert "https://e/x" in out  # recommendation source

@@ -24,6 +24,7 @@ class Signal(StrEnum):
     WEEK_52_HIGH = "week_52_high"
     WEEK_52_LOW = "week_52_low"
     DIVIDEND_YIELD = "dividend_yield"
+    FRACTIONABLE = "fractionable"
     # --- declared seams (not provided in Phase 3) ---
     HISTORICALS = "historicals"
     EARNINGS = "earnings"

@@ -12,6 +12,8 @@ from typing import Any
 
 from rh_wizard.config.settings import Settings
 
+_MAX_SYMBOLS_PER_CALL = 10  # Robinhood equity per-symbol tools cap at 10 symbols per call.
+
 
 class BrokerClient:
     def __init__(self, mcp_client: Any) -> None:
@@ -52,30 +54,46 @@ class BrokerClient:
         Live-confirmed (Phase 1 §18): the payload is ``data.results[]``, where each entry
         pairs ``{"quote": {...}, "close": {...}}``. We unwrap to the inner ``quote`` dict so
         callers see ``symbol`` / ``last_trade_price`` directly. A flat shape is tolerated.
+        Batched to <=10 symbols per call (the equity per-symbol tools cap there).
         """
-        if not symbols:
-            return []
-        payload = self._call("get_equity_quotes", symbols=list(symbols))
-        items = _extract_list(payload, "results") or _extract_list(payload, "quotes")
         quotes: list[dict] = []
-        for item in items:
-            if not isinstance(item, dict):
-                continue
-            inner = item.get("quote")
-            quotes.append(inner if isinstance(inner, dict) else item)
+        for chunk in _chunked(list(symbols), _MAX_SYMBOLS_PER_CALL):
+            payload = self._call("get_equity_quotes", symbols=chunk)
+            items = _extract_list(payload, "results") or _extract_list(payload, "quotes")
+            for item in items:
+                if not isinstance(item, dict):
+                    continue
+                inner = item.get("quote")
+                quotes.append(inner if isinstance(inner, dict) else item)
         return quotes
 
     def get_equity_fundamentals(self, symbols: list[str]) -> list[dict]:
         """Return one fundamentals dict per symbol (market cap, avg volume, P/E, P/B,
-        sector/industry, 52-wk range, dividend).
+        sector/industry, 52-wk range, dividend). Batched to <=10 symbols per call.
 
-        Payload shape unconfirmed until live verification (Phase 3, spec §18) — defensively
-        unwrap ``data.results``/``data.fundamentals``, tolerating a flat list.
+        Field names confirmed live (Phase 3, spec §18); ``data.results``/``data.fundamentals``
+        unwrapped defensively, tolerating a flat list.
         """
-        if not symbols:
-            return []
-        payload = self._call("get_equity_fundamentals", symbols=list(symbols))
-        return _extract_list(payload, "results") or _extract_list(payload, "fundamentals")
+        rows: list[dict] = []
+        for chunk in _chunked(list(symbols), _MAX_SYMBOLS_PER_CALL):
+            payload = self._call("get_equity_fundamentals", symbols=chunk)
+            rows.extend(_extract_list(payload, "results") or _extract_list(payload, "fundamentals"))
+        return rows
+
+    def get_equity_tradability(self, account_number: str, symbols: list[str]) -> list[dict]:
+        """Return one tradability dict per symbol (whether fractional orders are supported).
+
+        Requires ``account_number`` and caps at 10 symbols per call — both enforced here.
+        Payload shape unconfirmed until live verification (Phase 4e, spec §18) — defensively
+        unwrap ``data.results``/``data.tradability``, tolerating a flat list.
+        """
+        rows: list[dict] = []
+        for chunk in _chunked(list(symbols), _MAX_SYMBOLS_PER_CALL):
+            payload = self._call(
+                "get_equity_tradability", account_number=account_number, symbols=chunk
+            )
+            rows.extend(_extract_list(payload, "results") or _extract_list(payload, "tradability"))
+        return rows
 
     def get_equity_orders(
         self,
@@ -105,6 +123,11 @@ class BrokerClient:
             cursor = _next_cursor(payload)
             if not cursor:
                 return items
+
+
+def _chunked(items: list, size: int) -> list[list]:
+    """Split ``items`` into consecutive sublists of at most ``size`` (empty list -> no chunks)."""
+    return [items[i : i + size] for i in range(0, len(items), size)]
 
 
 def _coerce_payload(raw: Any) -> dict:

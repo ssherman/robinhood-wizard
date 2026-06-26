@@ -10,7 +10,7 @@ vetted by a deterministic risk engine. Equities and ETFs only.
 
 ## Status
 
-Actively developed. **What works today (Phases 0–4d):**
+Actively developed. **What works today (Phases 0–4e):**
 
 - **Authentication** to a Robinhood Agentic Trading account (browser consent → cached, auto-refreshed token).
 - **Read-only portfolio + history** — reconcile live holdings, sync order history into a local journal.
@@ -25,6 +25,11 @@ Actively developed. **What works today (Phases 0–4d):**
 - **Dynamic universe discovery** — a strategy with `discover: true` discovers fresh candidate
   tickers from its `intent` each cycle (web-search-backed), unioned with any hand-picked
   `universe` and your holdings. Write a thesis, the agent finds the names.
+- **Allocation buckets + allocation-aware planning** — a strategy can split investable capital
+  into named themes, each with a target % (e.g. 40% AI, 20% energy). The LLM picks the tickers
+  and their relative weights per bucket; a deterministic allocator sizes positions (whole or
+  fractional shares) to hit the targets and trims/buys to rebalance within a drift band; the
+  risk engine vets every order. See **Bucketed strategies** below.
 
 **DryRun only.** There is **no order-execution path anywhere in the codebase yet** — `run`
 proposes and vets a plan, then stops. The risk engine is the hard gate and nothing can
@@ -257,8 +262,91 @@ risk_overrides:
 
 > Two ways to get a universe from a theme: `wizard compile` *suggests* a `universe` once for
 > you to review/freeze; `discover: true` discovers one *dynamically every cycle* from `intent`.
-> Use either, or both (a reviewed core list plus live discovery around it). Allocation buckets
-> with target percentages are a planned phase.
+> Use either, or both (a reviewed core list plus live discovery around it). For target-percentage
+> allocation across themes, see **Bucketed strategies** below.
+
+### Bucketed strategies
+
+A bucketed strategy divides your investable capital into named themes, each with a target
+percentage. The LLM recommends which tickers fit each bucket and their relative weights; a
+deterministic allocator sizes the positions to hit the targets; the risk engine vets every
+proposed order. Buckets are **mutually exclusive** with a flat top-level `universe` or
+`discover` key — use one model or the other per strategy file.
+
+```yaml
+buckets:
+  - id: ai               # stable id for this bucket (used in journaling)
+    name: AI             # display name
+    target_pct: 40       # target % of investable capital
+    intent: Large-cap AI and semiconductor leaders with durable demand.
+    discover: true        # discover candidate tickers for this theme each cycle
+    max_candidates: 15
+  - id: energy
+    name: Energy
+    target_pct: 20
+    intent: Large-cap energy producers with strong free cash flow.
+    universe: [XOM, CVX]  # or list tickers explicitly instead of discovering
+  - id: broad
+    name: Broad market
+    target_pct: 20
+    universe: [VOO]
+# Targets sum to 80%; the remaining 20% of investable stays as extra cash.
+```
+
+Targets are expressed as **% of investable capital** (portfolio value minus the configured
+cash reserve). They need not sum to 100 — any gap becomes additional cash. Each bucket may
+use `universe`, `discover: true`, or both.
+
+Three per-strategy dials control rebalance behavior (all shown with their defaults):
+
+| Field | Default | Meaning |
+|-------|---------|---------|
+| `allow_fractional` | `true` | Size positions fractionally when Robinhood marks the symbol as fractionable; automatically degrades to whole-share sizing for symbols that do not support it |
+| `rebalance_mode` | `full` | `full` = buy under-weight buckets *and* sell-to-trim over-weight ones; `buy_only` = never sells |
+| `rebalance_band_pct` | `5` | Only rebalance a bucket when its current allocation drifts more than this many percentage points from its target |
+
+The rebalance band **decouples how often you run the cycle from how often it actually trades**.
+With a 5-point band and weekly cadence, a bucket that drifts only 3 points off target is
+left alone that cycle — this prevents churning on normal market noise.
+
+Copy the annotated example and run one cycle (like `run`, it uses the LLM, so provide the
+OpenAI key):
+
+```bash
+cp strategies.example/sample-buckets.yaml ~/.rh-wizard/strategies/
+uv run --env-file .env wizard run sample-buckets
+```
+
+The cycle discovers/recommends per bucket, the allocator sizes positions to the targets, and
+the risk engine vets every order. You'll see an **Allocation** table alongside the proposed
+trades — for example, on a first run with no existing holdings:
+
+```
+Run 7f3a… — strategy 'sample-buckets' — mode dryrun — completed
+Cash: $3,000.00   Total value: $3,000.00
+        Allocation (target vs current per bucket)
+┌──────────────┬────────┬─────────┬─────────┬───────┬────────┐
+│ Bucket       │ Target │ Current │   Drift │ Band? │ Action │
+├──────────────┼────────┼─────────┼─────────┼───────┼────────┤
+│ AI           │ 40.00% │  0.00%  │ -40.00% │  no   │ buy    │
+│ Energy       │ 20.00% │  0.00%  │ -20.00% │  no   │ buy    │
+│ Broad market │ 20.00% │  0.00%  │ -20.00% │  no   │ buy    │
+└──────────────┴────────┴─────────┴─────────┴───────┴────────┘
+Proposed trades (DryRun — approved)
+  buy NVDA …   buy XOM …   buy VOO …
+Rejected:
+  buy MSFT: would exceed per-cycle deploy cap of 30%
+DryRun — no orders placed.
+```
+
+> **Deployment ramps over several cycles.** With the conservative defaults
+> (`max_deploy_pct_per_cycle` 30%, `max_position_pct` 20%, `max_trades_per_cycle` 5), a fresh
+> bucketed strategy whose targets sum to ~80% won't buy everything at once — the Allocation
+> table shows the targets while the risk engine paces the actual buys. Re-run on your cadence;
+> each cycle closes the drift until the band is satisfied.
+
+See `strategies.example/sample-buckets.yaml` for a complete annotated example to copy and
+adapt.
 
 ## Risk guardrails
 
@@ -313,9 +401,9 @@ Design docs live in `docs/superpowers/specs/`; per-phase implementation plans in
 
 - **Done:** scaffold/auth (0) · read-only portfolio + journal (1) · risk engine (2) · data
   layer (3) · DryRun cycle skeleton (4a) · LLM research + plan (4b-1) · web/news search
-  (4b-2) · natural-language strategy compiler (4c) · **dynamic universe discovery (4d)**.
-- **Next:** allocation buckets + allocation-aware planning · order execution with
-  Human-Approval / Autonomous modes and kill-switch enforcement.
+  (4b-2) · natural-language strategy compiler (4c) · dynamic universe discovery (4d) ·
+  **allocation buckets + allocation-aware planning (4e)**.
+- **Next:** order execution with Human-Approval / Autonomous modes and kill-switch enforcement.
 
 ## License
 
