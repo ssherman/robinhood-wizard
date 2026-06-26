@@ -34,6 +34,15 @@ def _build_web_researcher(settings):
     return WebLlmResearcher(RetryingWebSearchLlm(OpenAiWebSearchLlm(settings)))
 
 
+def _build_discoverer(settings):
+    """Build the web-search-backed universe discoverer (real path; patched in tests)."""
+    from rh_wizard.discovery.web_llm import WebUniverseDiscoverer
+    from rh_wizard.llm.openai_web import OpenAiWebSearchLlm
+    from rh_wizard.llm.web_search import RetryingWebSearchLlm
+
+    return WebUniverseDiscoverer(RetryingWebSearchLlm(OpenAiWebSearchLlm(settings)))
+
+
 def list_strategies() -> None:
     registry = StrategyRegistry(paths.strategies_dir())
     ids = registry.list()
@@ -67,6 +76,7 @@ def run_strategy(strategy_id: str) -> None:
             researcher=researcher,
             planner=LlmPlanner(llm),
             journal=journal,
+            discoverer=_build_discoverer(settings) if strategy.discover else None,
         )
         result = run_cycle(strategy, deps, CycleMode.DRY_RUN)
     typer.echo(render_cycle_result(result))

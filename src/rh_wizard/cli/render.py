@@ -129,6 +129,14 @@ def render_cycle_result(result) -> str:
     if result.portfolio is not None:
         p = result.portfolio
         lines.append(f"Cash: {fmt_money(p.cash)}   Total value: {fmt_money(p.total_value)}")
+    if result.discovery is not None and result.discovery.tickers:
+        syms = ", ".join(t.symbol for t in result.discovery.tickers)
+        lines.append(f"Discovered universe: {syms}")
+        if result.discovery.sources:
+            lines.append("Discovery sources:")
+            for s in result.discovery.sources:
+                label = s.title or s.url
+                lines.append(f"  - {label} ({s.url})")
     if result.report is not None and result.report.summary:
         lines.append(f"Research: {result.report.summary}")
     if result.report is not None and result.report.sources:
