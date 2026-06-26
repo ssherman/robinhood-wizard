@@ -10,7 +10,7 @@ vetted by a deterministic risk engine. Equities and ETFs only.
 
 ## Status
 
-Actively developed. **What works today (Phases 0–4d):**
+Actively developed. **What works today (Phases 0–4e):**
 
 - **Authentication** to a Robinhood Agentic Trading account (browser consent → cached, auto-refreshed token).
 - **Read-only portfolio + history** — reconcile live holdings, sync order history into a local journal.
@@ -25,6 +25,11 @@ Actively developed. **What works today (Phases 0–4d):**
 - **Dynamic universe discovery** — a strategy with `discover: true` discovers fresh candidate
   tickers from its `intent` each cycle (web-search-backed), unioned with any hand-picked
   `universe` and your holdings. Write a thesis, the agent finds the names.
+- **Allocation buckets + allocation-aware planning** — a strategy can split investable capital
+  into named themes, each with a target % (e.g. 40% AI, 20% energy). The LLM picks the tickers
+  and their relative weights per bucket; a deterministic allocator sizes positions (whole or
+  fractional shares) to hit the targets and trims/buys to rebalance within a drift band; the
+  risk engine vets every order. See **Bucketed strategies** below.
 
 **DryRun only.** There is **no order-execution path anywhere in the codebase yet** — `run`
 proposes and vets a plan, then stops. The risk engine is the hard gate and nothing can
@@ -304,6 +309,42 @@ The rebalance band **decouples how often you run the cycle from how often it act
 With a 5-point band and weekly cadence, a bucket that drifts only 3 points off target is
 left alone that cycle — this prevents churning on normal market noise.
 
+Copy the annotated example and run one cycle (like `run`, it uses the LLM, so provide the
+OpenAI key):
+
+```bash
+cp strategies.example/sample-buckets.yaml ~/.rh-wizard/strategies/
+uv run --env-file .env wizard run sample-buckets
+```
+
+The cycle discovers/recommends per bucket, the allocator sizes positions to the targets, and
+the risk engine vets every order. You'll see an **Allocation** table alongside the proposed
+trades — for example, on a first run with no existing holdings:
+
+```
+Run 7f3a… — strategy 'sample-buckets' — mode dryrun — completed
+Cash: $3,000.00   Total value: $3,000.00
+        Allocation (target vs current per bucket)
+┌──────────────┬────────┬─────────┬─────────┬───────┬────────┐
+│ Bucket       │ Target │ Current │   Drift │ Band? │ Action │
+├──────────────┼────────┼─────────┼─────────┼───────┼────────┤
+│ AI           │ 40.00% │  0.00%  │ -40.00% │  no   │ buy    │
+│ Energy       │ 20.00% │  0.00%  │ -20.00% │  no   │ buy    │
+│ Broad market │ 20.00% │  0.00%  │ -20.00% │  no   │ buy    │
+└──────────────┴────────┴─────────┴─────────┴───────┴────────┘
+Proposed trades (DryRun — approved)
+  buy NVDA …   buy XOM …   buy VOO …
+Rejected:
+  buy MSFT: would exceed per-cycle deploy cap of 30%
+DryRun — no orders placed.
+```
+
+> **Deployment ramps over several cycles.** With the conservative defaults
+> (`max_deploy_pct_per_cycle` 30%, `max_position_pct` 20%, `max_trades_per_cycle` 5), a fresh
+> bucketed strategy whose targets sum to ~80% won't buy everything at once — the Allocation
+> table shows the targets while the risk engine paces the actual buys. Re-run on your cadence;
+> each cycle closes the drift until the band is satisfied.
+
 See `strategies.example/sample-buckets.yaml` for a complete annotated example to copy and
 adapt.
 
@@ -360,9 +401,9 @@ Design docs live in `docs/superpowers/specs/`; per-phase implementation plans in
 
 - **Done:** scaffold/auth (0) · read-only portfolio + journal (1) · risk engine (2) · data
   layer (3) · DryRun cycle skeleton (4a) · LLM research + plan (4b-1) · web/news search
-  (4b-2) · natural-language strategy compiler (4c) · **dynamic universe discovery (4d)**.
-- **Next:** allocation buckets + allocation-aware planning · order execution with
-  Human-Approval / Autonomous modes and kill-switch enforcement.
+  (4b-2) · natural-language strategy compiler (4c) · dynamic universe discovery (4d) ·
+  **allocation buckets + allocation-aware planning (4e)**.
+- **Next:** order execution with Human-Approval / Autonomous modes and kill-switch enforcement.
 
 ## License
 
