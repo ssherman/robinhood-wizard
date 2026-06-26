@@ -104,3 +104,37 @@ def test_record_discovery_is_idempotent_and_handles_empty():
         assert [r["symbol"] for r in journal.discovered_universe("run1")] == ["MSFT"]  # replaced
         journal.record_discovery("run1", DiscoveryResult())  # empty clears it
         assert journal.discovered_universe("run1") == []
+
+
+def test_record_allocation_roundtrips():
+    from rh_wizard.memory.journal import SqliteJournal
+    from rh_wizard.models.allocation import (
+        AllocationRecommendation,
+        AllocationReport,
+        BucketAllocation,
+    )
+    from rh_wizard.models.research import Source
+
+    report = AllocationReport(
+        buckets=[
+            BucketAllocation(
+                bucket_id="ai",
+                name="AI",
+                target_pct=Decimal("40"),
+                current_pct=Decimal("30"),
+                drift_pct=Decimal("-10"),
+                within_band=False,
+                action="buy",
+            )
+        ],
+        orphans=["TSLA"],
+        investable=Decimal("900"),
+    )
+    rec = AllocationRecommendation(sources=[Source(title="N", url="https://e/x")])
+    with SqliteJournal(":memory:") as j:
+        j.record_allocation("run1", report, rec)
+        rows = j.allocation_report("run1")
+        assert rows[0]["bucket_id"] == "ai"
+        assert rows[0]["action"] == "buy"
+        assert rows[0]["target_pct"] == "40"
+        assert [s["url"] for s in j.recommendation_sources("run1")] == ["https://e/x"]
