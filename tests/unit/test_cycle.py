@@ -39,12 +39,16 @@ class FakeDataSource:
     name = "fake"
 
     def provides(self):
-        return set(RISK_SIGNALS) | {Signal.PRICE}
+        return set(RISK_SIGNALS) | {Signal.PRICE, Signal.FRACTIONABLE}
 
     def fetch(self, symbols, signals):
         return {
             s: SymbolData(
-                symbol=s, price="100", average_volume="50000000", market_cap="3000000000000"
+                symbol=s,
+                price="100",
+                average_volume="50000000",
+                market_cap="3000000000000",
+                fractionable=True,
             )
             for s in symbols
         }
@@ -207,3 +211,103 @@ def test_cycle_skips_discovery_when_flag_off():
             result = run_cycle(strategy, deps)
         assert result.run.status == "completed"
         assert result.discovery is None
+
+
+def _bucketed_strategy():
+    from rh_wizard.models.bucket import Bucket
+
+    return Strategy(
+        id="b",
+        name="B",
+        signals_needed={Signal.PRICE},
+        buckets=[Bucket(id="ai", target_pct="100", universe=["AAPL"])],
+    )
+
+
+class _FakeRecommender:
+    def __init__(self, weight="100"):
+        self._weight = weight
+
+    def recommend(self, strategy, bucket_candidates, market, portfolio):
+        from rh_wizard.models.allocation import (
+            AllocationRecommendation,
+            BucketRecommendation,
+            RecommendedPosition,
+        )
+
+        return AllocationRecommendation(
+            buckets=[
+                BucketRecommendation(
+                    bucket_id="ai",
+                    positions=[RecommendedPosition(symbol="AAPL", weight=self._weight)],
+                )
+            ],
+            summary="ok",
+        )
+
+
+def test_bucketed_cycle_completes_allocates_and_journals():
+    strategy = _bucketed_strategy()
+    with SqliteJournal(":memory:") as journal:
+        deps = _deps(journal)
+        deps.recommender = _FakeRecommender()
+        with deps.broker:
+            result = run_cycle(strategy, deps)
+        assert result.run.status == "completed"
+        assert result.recommendation is not None
+        assert result.allocation is not None
+        assert result.allocation.buckets[0].bucket_id == "ai"
+        # investable = 10000 * 0.9 = 9000, single bucket 100% -> a buy intent exists, vetted
+        all_intents = result.vetted.approved + [r.intent for r in result.vetted.rejected]
+        assert any(i.side == "buy" and i.symbol == "AAPL" for i in all_intents)
+        assert journal.allocation_report(result.run.run_id)[0]["bucket_id"] == "ai"
+
+
+def test_bucketed_cycle_aborts_when_recommender_raises():
+    class Boom:
+        def recommend(self, strategy, bucket_candidates, market, portfolio):
+            raise RuntimeError("rec down")
+
+    strategy = _bucketed_strategy()
+    with SqliteJournal(":memory:") as journal:
+        deps = _deps(journal)
+        deps.recommender = Boom()
+        with deps.broker:
+            result = run_cycle(strategy, deps)
+        assert result.run.status == "aborted"
+        assert "rec down" in result.run.note
+
+
+def test_bucketed_cycle_degrades_when_bucket_discovery_raises():
+    from rh_wizard.models.bucket import Bucket
+
+    class BoomDiscoverer:
+        def discover(self, strategy):
+            raise RuntimeError("discovery down")
+
+    strategy = Strategy(
+        id="b",
+        name="B",
+        signals_needed={Signal.PRICE},
+        buckets=[Bucket(id="ai", target_pct="100", universe=["AAPL"], discover=True)],
+    )
+    with SqliteJournal(":memory:") as journal:
+        deps = _deps(journal)
+        deps.recommender = _FakeRecommender()
+        deps.discoverer = BoomDiscoverer()
+        with deps.broker:
+            result = run_cycle(strategy, deps)
+        assert result.run.status == "completed"  # degrade, not abort
+        assert any("discovery failed" in n for n in result.market.notes)
+        assert "AAPL" in result.market.symbols  # explicit bucket universe still resolved
+
+
+def test_flat_cycle_unchanged_has_no_allocation():
+    strategy = Strategy(id="m", name="M", universe=["AAPL"], signals_needed={Signal.PRICE})
+    with SqliteJournal(":memory:") as journal:
+        deps = _deps(journal)
+        with deps.broker:
+            result = run_cycle(strategy, deps)
+        assert result.run.status == "completed"
+        assert result.allocation is None
+        assert result.recommendation is None
