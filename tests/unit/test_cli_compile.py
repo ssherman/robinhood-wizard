@@ -1,3 +1,6 @@
+import os
+
+import pytest
 from typer.testing import CliRunner
 
 from rh_wizard.cli import compile as compile_module
@@ -168,3 +171,29 @@ def test_compile_over_allocation_exits_nonzero(monkeypatch, tmp_path):
     result = runner.invoke(app, ["compile", "over", "--text", "60% A, 60% B"])
     assert result.exit_code != 0
     assert not (tmp_path / "strategies" / "over.yaml").exists()
+
+
+@pytest.mark.skipif(
+    not (os.environ.get("RH_WIZARD_LIVE") and os.environ.get("OPENAI_API_KEY")),
+    reason="live test: needs RH_WIZARD_LIVE=1 and OPENAI_API_KEY",
+)
+def test_live_compile_emits_buckets(monkeypatch, tmp_path):
+    from decimal import Decimal
+
+    from rh_wizard.strategies.registry import StrategyRegistry
+
+    monkeypatch.setenv("RH_WIZARD_HOME", str(tmp_path))
+    result = runner.invoke(
+        app,
+        [
+            "compile",
+            "live-buckets",
+            "--text",
+            "10% small-cap rare earth metals, 70% large-cap value stocks, 20% cannabis stocks",
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    s = StrategyRegistry(tmp_path / "strategies").load("live-buckets")
+    assert len(s.buckets) >= 2  # a real allocation was detected
+    assert sum(b.target_pct for b in s.buckets) <= Decimal("100")
+    assert all(b.universe for b in s.buckets)  # each bucket got >=1 web-searched ticker
