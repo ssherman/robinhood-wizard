@@ -137,6 +137,33 @@ def render_cycle_result(result) -> str:
             for s in result.discovery.sources:
                 label = s.title or s.url
                 lines.append(f"  - {label} ({s.url})")
+    allocation = getattr(result, "allocation", None)
+    if allocation is not None:
+        table = Table(title="Allocation (target vs current per bucket)")
+        table.add_column("Bucket")
+        table.add_column("Target", justify="right")
+        table.add_column("Current", justify="right")
+        table.add_column("Drift", justify="right")
+        table.add_column("Band?", justify="center")
+        table.add_column("Action")
+        for b in allocation.buckets:
+            table.add_row(
+                b.name or b.bucket_id,
+                fmt_pct(b.target_pct),
+                fmt_pct(b.current_pct),
+                fmt_pct(b.drift_pct),
+                "yes" if b.within_band else "no",
+                b.action,
+            )
+        lines.append(render_to_str(table).rstrip("\n"))
+        if allocation.orphans:
+            lines.append("Orphan holdings (untouched): " + ", ".join(allocation.orphans))
+        rec = getattr(result, "recommendation", None)
+        if rec is not None and rec.sources:
+            lines.append("Recommendation sources:")
+            for s in rec.sources:
+                label = s.title or s.url
+                lines.append(f"  - {label} ({s.url})")
     if result.report is not None and result.report.summary:
         lines.append(f"Research: {result.report.summary}")
     if result.report is not None and result.report.sources:
