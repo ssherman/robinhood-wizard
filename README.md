@@ -226,7 +226,8 @@ uv run --env-file .env wizard run ai-discovered
 The cycle discovers candidates from `intent`, resolves their live data, researches and proposes
 a vetted plan — printing a "Discovered universe" line with citations. If discovery fails the
 cycle degrades (it proceeds with your explicit `universe` + holdings and notes the failure),
-and the risk engine still vets every proposed trade. **No orders are placed.**
+and the risk engine still vets every proposed trade. **No orders are placed.** Discovery uses the
+web-search LLM, so provide your OpenAI key (e.g. via `--env-file .env`).
 
 ### Strategy file format
 
