@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import pydantic
 
+from rh_wizard.models._types import LlmDecimal
 from rh_wizard.models.research import Source
 from rh_wizard.models.signals import Signal
 from rh_wizard.models.strategy import Strategy
@@ -19,10 +20,18 @@ class SuggestedTicker(pydantic.BaseModel):
     rationale: str = ""
 
 
+class CompiledBucket(pydantic.BaseModel):
+    name: str
+    target_pct: LlmDecimal  # target % of investable capital (schema-safe Decimal)
+    intent: str = ""
+    tickers: list[SuggestedTicker] = []
+
+
 class CompiledStrategy(pydantic.BaseModel):
     name: str
     intent: str = ""
     tickers: list[SuggestedTicker] = []
+    buckets: list[CompiledBucket] = []  # non-empty ⇒ a bucketed thematic allocation
     signals_needed: list[Signal] = []
     cadence: str | None = None
 
@@ -30,4 +39,5 @@ class CompiledStrategy(pydantic.BaseModel):
 class CompileResult(pydantic.BaseModel):
     strategy: Strategy
     tickers: list[SuggestedTicker] = []
+    buckets: list[CompiledBucket] = []  # per-bucket compiled tickers, for the review header
     sources: list[Source] = []

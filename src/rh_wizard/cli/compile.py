@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pydantic
 import typer
 
 from rh_wizard.config import paths
@@ -42,13 +43,20 @@ def _read_prose(file: Path | None, text: str | None) -> str:
 
 
 def _render_summary(result: CompileResult, path: Path, strategy_id: str) -> str:
-    lines = [
-        f"Compiled '{strategy_id}' -> {path}",
-        f"Name: {result.strategy.name}",
-        "Suggested universe:",
-    ]
-    for t in result.tickers:
-        lines.append(f"  {t.symbol} - {t.rationale}" if t.rationale else f"  {t.symbol}")
+    lines = [f"Compiled '{strategy_id}' -> {path}", f"Name: {result.strategy.name}"]
+    if result.buckets:
+        lines.append("Buckets:")
+        for b in result.buckets:
+            lines.append(f"  {b.name} ({b.target_pct}% of investable):")
+            for t in b.tickers:
+                entry = f"    {t.symbol} - {t.rationale}" if t.rationale else f"    {t.symbol}"
+                lines.append(entry)
+            if not b.tickers:
+                lines.append("    (no tickers found — this bucket's target will sit as cash)")
+    else:
+        lines.append("Suggested universe:")
+        for t in result.tickers:
+            lines.append(f"  {t.symbol} - {t.rationale}" if t.rationale else f"  {t.symbol}")
     if result.sources:
         lines.append("Sources:")
         for s in result.sources:
@@ -77,6 +85,9 @@ def compile_strategy(strategy_id: str, file: Path | None, text: str | None, forc
         result = compiler.compile(strategy_id, prose)
     except LlmError as exc:
         typer.echo(f"Compile failed: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
+    except pydantic.ValidationError as exc:
+        typer.echo(f"Compile failed: the thesis did not form a valid strategy: {exc}", err=True)
         raise typer.Exit(code=1) from exc
 
     write_strategy_yaml(out_path, result, prose)

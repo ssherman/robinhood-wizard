@@ -176,6 +176,12 @@ The suggested tickers are LLM web-search suggestions, not vetted picks — revie
 running. Re-compiling an existing id requires `--force`. The compiler never sets
 `risk_overrides`; risk always comes from your global config (and any `risk_ceiling`).
 
+If the description assigns target percentages to themes (e.g. "20% rare-earth funds, 40% AI,
+…"), `wizard compile` automatically produces a **bucketed** strategy — one bucket per theme
+with its target %, each bucket's web-searched tickers frozen as its reviewable `universe`
+(`discover: false`). Flip a bucket to `discover: true` in the generated YAML for dynamic
+discovery each cycle. See the **Bucketed strategies** section below for run-time behavior.
+
 ### Running a strategy (the DryRun cycle)
 
 1. **Write a strategy** as YAML in `~/.rh-wizard/strategies/`. Start from the example:
