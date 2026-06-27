@@ -64,9 +64,16 @@ def strategies() -> None:
 @app.command()
 def run(
     strategy_id: str = typer.Argument(..., help="Strategy id (yaml filename stem)."),  # noqa: B008
+    execute: bool = typer.Option(  # noqa: B008
+        False,
+        "--execute",
+        help="Place REAL orders after a typed confirmation (HumanApproval). "
+        "Default is DryRun (no orders).",
+    ),
 ) -> None:
-    """Run one DryRun cycle for STRATEGY_ID — proposes a vetted plan, places no orders."""
-    run_strategy(strategy_id)
+    """Run STRATEGY_ID. Default is DryRun — proposes a vetted plan and places NO orders.
+    With --execute: places REAL orders after a typed confirmation (HumanApproval)."""
+    run_strategy(strategy_id, execute=execute)
 
 
 @app.command()

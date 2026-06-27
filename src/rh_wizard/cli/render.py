@@ -218,5 +218,29 @@ def render_cycle_result(result) -> str:
     if vetted is None or (not vetted.approved and not vetted.rejected):
         lines.append("No trades proposed.")
 
-    lines.append("DryRun — no orders placed.")
+    orders = getattr(result, "orders", None)
+    if orders:
+        table = Table(title="Execution")
+        table.add_column("Side")
+        table.add_column("Symbol")
+        table.add_column("Status")
+        table.add_column("Order id")
+        for o in orders:
+            if o.order_id:
+                note = o.order_id
+            elif isinstance(o.raw, dict) and o.raw.get("error"):
+                note = str(o.raw["error"])
+            elif isinstance(o.raw, dict):
+                alerts = o.raw.get("alerts", [])
+                note = ", ".join(alerts) if alerts else "-"
+            else:
+                note = "-"
+            table.add_row(o.side, o.symbol, o.status, note)
+        lines.append(render_to_str(table).rstrip("\n"))
+
+    if getattr(result, "orders", None):
+        placed = sum(1 for o in result.orders if o.status == "placed")
+        lines.append(f"Executed: {placed} placed, {len(result.orders) - placed} not placed.")
+    else:
+        lines.append("DryRun — no orders placed.")
     return "\n".join(lines) + "\n"

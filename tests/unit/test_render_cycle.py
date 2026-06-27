@@ -4,6 +4,7 @@ from decimal import Decimal
 from rh_wizard.cli.render import render_cycle_result
 from rh_wizard.core.cycle import CycleResult
 from rh_wizard.models.cycle import CycleRun
+from rh_wizard.models.order import OrderResult
 from rh_wizard.models.plan import RejectedIntent, TradeIntent, VettedPlan
 from rh_wizard.models.portfolio import PortfolioState
 from rh_wizard.models.research import ResearchReport
@@ -141,3 +142,31 @@ def test_render_includes_allocation_block():
     assert "AI" in out and "buy" in out
     assert "TSLA" in out  # orphan listed
     assert "https://e/x" in out  # recommendation source
+
+
+def test_render_shows_execution_summary():
+    result = CycleResult(
+        run=_run(),
+        vetted=VettedPlan(),
+        orders=[
+            OrderResult(
+                symbol="AAPL",
+                side="buy",
+                status="placed",
+                order_type="limit",
+                quantity=Decimal("3"),
+                order_id="ord-1",
+            ),
+            OrderResult(
+                symbol="MU",
+                side="buy",
+                status="skipped",
+                amount=Decimal("180"),
+                raw={"alerts": ["insufficient buying power"]},
+            ),
+        ],
+    )
+    out = render_cycle_result(result)
+    assert "Execution" in out
+    assert "AAPL" in out and "placed" in out and "ord-1" in out
+    assert "MU" in out and "skipped" in out

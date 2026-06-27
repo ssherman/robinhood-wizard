@@ -138,3 +138,29 @@ def test_record_allocation_roundtrips():
         assert rows[0]["action"] == "buy"
         assert rows[0]["target_pct"] == "40"
         assert [s["url"] for s in j.recommendation_sources("run1")] == ["https://e/x"]
+
+
+def test_record_orders_roundtrips():
+    from rh_wizard.memory.journal import SqliteJournal
+    from rh_wizard.models.order import OrderResult
+
+    orders = [
+        OrderResult(
+            symbol="AAPL",
+            side="buy",
+            status="placed",
+            order_type="limit",
+            quantity=Decimal("3"),
+            limit_price=Decimal("190"),
+            order_id="ord-1",
+            ref_id="r-1",
+        ),
+        OrderResult(symbol="MU", side="buy", status="skipped", amount=Decimal("180")),
+    ]
+    with SqliteJournal(":memory:") as j:
+        j.record_orders("run1", orders)
+        rows = j.orders("run1")
+        assert [r["symbol"] for r in rows] == ["AAPL", "MU"]
+        assert rows[0]["status"] == "placed" and rows[0]["order_id"] == "ord-1"
+        assert rows[0]["ref_id"] == "r-1" and rows[0]["quantity"] == "3"
+        assert rows[1]["status"] == "skipped" and rows[1]["amount"] == "180"

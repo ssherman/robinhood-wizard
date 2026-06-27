@@ -13,6 +13,7 @@ from pathlib import Path
 from rh_wizard.models.allocation import AllocationRecommendation, AllocationReport
 from rh_wizard.models.cycle import CycleRun
 from rh_wizard.models.discovery import DiscoveryResult
+from rh_wizard.models.order import OrderResult
 from rh_wizard.models.plan import TradeIntent, VettedPlan
 from rh_wizard.models.research import ResearchReport
 from rh_wizard.models.trade import TradeRecord
@@ -88,6 +89,20 @@ CREATE TABLE IF NOT EXISTS recommendation_sources (
     seq    INTEGER NOT NULL,
     title  TEXT,
     url    TEXT NOT NULL,
+    PRIMARY KEY (run_id, seq)
+);
+CREATE TABLE IF NOT EXISTS orders (
+    run_id      TEXT NOT NULL,
+    seq         INTEGER NOT NULL,
+    symbol      TEXT NOT NULL,
+    side        TEXT NOT NULL,
+    status      TEXT NOT NULL,
+    order_type  TEXT,
+    quantity    TEXT,
+    amount      TEXT,
+    limit_price TEXT,
+    order_id    TEXT,
+    ref_id      TEXT,
     PRIMARY KEY (run_id, seq)
 );
 """
@@ -291,6 +306,37 @@ class SqliteJournal:
         cur = self._conn.execute(
             "SELECT * FROM recommendation_sources WHERE run_id = ? ORDER BY seq", (run_id,)
         )
+        return [dict(row) for row in cur.fetchall()]
+
+    def record_orders(self, run_id: str, orders: list[OrderResult]) -> None:
+        self._conn.execute("DELETE FROM orders WHERE run_id = ?", (run_id,))
+        rows = [
+            {
+                "run_id": run_id,
+                "seq": i,
+                "symbol": o.symbol,
+                "side": o.side,
+                "status": o.status,
+                "order_type": o.order_type,
+                "quantity": None if o.quantity is None else str(o.quantity),
+                "amount": None if o.amount is None else str(o.amount),
+                "limit_price": None if o.limit_price is None else str(o.limit_price),
+                "order_id": o.order_id,
+                "ref_id": o.ref_id,
+            }
+            for i, o in enumerate(orders)
+        ]
+        if rows:
+            self._conn.executemany(
+                "INSERT INTO orders (run_id, seq, symbol, side, status, order_type, quantity, "
+                "amount, limit_price, order_id, ref_id) VALUES (:run_id, :seq, :symbol, :side, "
+                ":status, :order_type, :quantity, :amount, :limit_price, :order_id, :ref_id);",
+                rows,
+            )
+        self._conn.commit()
+
+    def orders(self, run_id: str) -> list[dict]:
+        cur = self._conn.execute("SELECT * FROM orders WHERE run_id = ? ORDER BY seq", (run_id,))
         return [dict(row) for row in cur.fetchall()]
 
     def recent_runs(self, limit: int = 50) -> list[CycleRun]:

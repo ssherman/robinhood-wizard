@@ -181,6 +181,70 @@ def test_run_bucketed_uses_recommender_and_renders_allocation(monkeypatch, tmp_p
     assert "no orders" in result.output.lower()
 
 
+def test_run_execute_flag_runs_human_approval(monkeypatch, tmp_path):
+    from rh_wizard.cli import run as run_module
+    from rh_wizard.models.order import OrderResult, ReviewResult
+
+    monkeypatch.setenv("RH_WIZARD_HOME", str(tmp_path))
+    _write_strategy(tmp_path)  # flat demo strategy, web_research: false
+
+    placed = []
+
+    class FakeExecutor:
+        def review(self, intent, account):
+            return ReviewResult(ok=True)
+
+        def place(self, intent, account, ref_id):
+            placed.append(intent.symbol)
+            return OrderResult(
+                symbol=intent.symbol,
+                side=intent.side,
+                status="placed",
+                order_type="limit",
+                quantity=intent.quantity,
+                ref_id=ref_id,
+                order_id="o",
+            )
+
+    class YesGate:
+        def confirm(self, vetted, portfolio, account):
+            return True
+
+    monkeypatch.setattr(auth, "_build_broker", lambda settings: FakeBroker())
+    monkeypatch.setattr(run_module, "_build_llm", lambda settings: FakeStructuredLlm())
+    monkeypatch.setattr(run_module, "_build_executor", lambda broker: FakeExecutor())
+    monkeypatch.setattr(run_module, "_build_approval", lambda: YesGate())
+
+    result = runner.invoke(app, ["run", "demo", "--execute"])
+    assert result.exit_code == 0, result.output
+    assert placed == ["AAPL"]  # real-execution path ran via the fakes
+
+
+def test_run_without_execute_places_nothing(monkeypatch, tmp_path):
+    from rh_wizard.cli import run as run_module
+
+    monkeypatch.setenv("RH_WIZARD_HOME", str(tmp_path))
+    _write_strategy(tmp_path)
+
+    class BoomExecutor:
+        def review(self, intent, account):
+            raise AssertionError("executor must not run in DryRun")
+
+        def place(self, intent, account, ref_id):
+            raise AssertionError("executor must not run in DryRun")
+
+    built = []
+    monkeypatch.setattr(auth, "_build_broker", lambda settings: FakeBroker())
+    monkeypatch.setattr(run_module, "_build_llm", lambda settings: FakeStructuredLlm())
+    monkeypatch.setattr(
+        run_module, "_build_executor", lambda broker: built.append(1) or BoomExecutor()
+    )
+    result = runner.invoke(app, ["run", "demo"])  # no --execute
+    assert result.exit_code == 0
+    assert "DryRun" in result.output
+    assert built == []  # _build_executor is not even called without --execute
+
+
 @pytest.mark.skipif(
     not (os.environ.get("RH_WIZARD_LIVE") and os.environ.get("OPENAI_API_KEY")),
     reason="live test: needs RH_WIZARD_LIVE=1 and OPENAI_API_KEY",
