@@ -35,7 +35,34 @@ def test_confirm_false_on_anything_else(capsys):
     assert CliApprovalGate(stdin=io.StringIO("y\n")).confirm(_vetted(), _portfolio(), acc) is False
     assert CliApprovalGate(stdin=io.StringIO("\n")).confirm(_vetted(), _portfolio(), acc) is False
     assert CliApprovalGate(stdin=io.StringIO("no\n")).confirm(_vetted(), _portfolio(), acc) is False
+    assert (
+        CliApprovalGate(stdin=io.StringIO("YES\n")).confirm(_vetted(), _portfolio(), acc) is False
+    )
 
 
 def test_satisfies_approval_protocol():
     assert isinstance(CliApprovalGate(), ApprovalGate)
+
+
+def test_confirm_shows_actual_order_kind(capsys):
+    vetted = VettedPlan(
+        approved=[
+            TradeIntent(
+                side="buy", symbol="AAPL", quantity="3", limit_price="190"
+            ),  # whole -> limit
+            TradeIntent(
+                side="buy", symbol="MU", amount="180.00", limit_price="1122.99"
+            ),  # fractional buy -> market
+            TradeIntent(
+                side="sell", symbol="NVDA", quantity="1.5", limit_price="100"
+            ),  # fractional sell -> market
+        ]
+    )
+    CliApprovalGate(stdin=io.StringIO("yes\n")).confirm(vetted, _portfolio(), "ACC1234567890")
+    lines = capsys.readouterr().out.splitlines()
+    aapl = next(line for line in lines if "AAPL" in line)
+    mu = next(line for line in lines if "MU" in line)
+    nvda = next(line for line in lines if "NVDA" in line)
+    assert "limit" in aapl
+    assert "market" in mu  # fractional buy is a market order
+    assert "market" in nvda  # fractional sell is a market order (NOT limit)

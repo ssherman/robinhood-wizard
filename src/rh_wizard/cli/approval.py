@@ -11,6 +11,7 @@ from decimal import Decimal
 from typing import TextIO
 
 from rh_wizard.cli.render import _intent_amount, fmt_money, fmt_num
+from rh_wizard.execution.robinhood import _order_params
 from rh_wizard.masking import mask_account
 from rh_wizard.models.plan import VettedPlan
 from rh_wizard.models.portfolio import PortfolioState
@@ -28,9 +29,13 @@ class CliApprovalGate:
         )
         for i in vetted.approved:
             qty = fmt_num(i.quantity) if i.quantity is not None else "-"
-            kind = "limit" if i.limit_price is not None and i.amount is None else "market"
+            try:
+                kind = _order_params(i)[0]
+            except ValueError:
+                kind = "?"
+            limit = f" @ {fmt_money(i.limit_price)}" if kind == "limit" else ""
             print(
-                f"  {i.side} {i.symbol}  qty={qty}  {kind} {fmt_money(i.limit_price)}  "
+                f"  {i.side} {i.symbol}  qty={qty}  {kind}{limit}  "
                 f"amount={fmt_money(_intent_amount(i))}"
             )
         print("Type 'yes' to place these orders (anything else cancels): ", end="")
