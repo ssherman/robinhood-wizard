@@ -1,4 +1,7 @@
+import os
 from decimal import Decimal
+
+import pytest
 
 from rh_wizard.execution.base import OrderExecutor
 from rh_wizard.execution.robinhood import RobinhoodOrderExecutor, _order_params
@@ -91,8 +94,6 @@ def test_satisfies_executor_protocol():
 
 
 def test_order_params_raises_on_unsizeable_intent():
-    import pytest
-
     intent = TradeIntent(side="buy", symbol="X", limit_price="100")  # no amount, no quantity
     with pytest.raises(ValueError):
         _order_params(intent)
@@ -116,3 +117,24 @@ def test_review_broker_exception_blocks():
     )
     assert rv.ok is False
     assert any("review 500" in a for a in rv.alerts)
+
+
+@pytest.mark.skipif(
+    not (os.environ.get("RH_WIZARD_LIVE") and os.environ.get("RH_WIZARD_LIVE_EXECUTE")),
+    reason="live review test: needs RH_WIZARD_LIVE=1 and RH_WIZARD_LIVE_EXECUTE=1 + a cached token",
+)
+def test_live_review_only_never_places(monkeypatch):
+    # REVIEW ONLY — this test never calls place_equity_order.
+    from rh_wizard.cli import auth
+    from rh_wizard.config.settings import load_settings
+    from rh_wizard.memory.portfolio import resolve_account_number
+    from rh_wizard.models.plan import TradeIntent
+
+    settings = load_settings()
+    broker = auth._build_broker(settings)
+    with broker:
+        account = resolve_account_number(broker, settings)
+        ex = RobinhoodOrderExecutor(broker)
+        intent = TradeIntent(side="buy", symbol="AAPL", quantity="1", limit_price="1.00")
+        rv = ex.review(intent, account)
+        assert isinstance(rv.ok, bool)  # a ReviewResult came back; we never place

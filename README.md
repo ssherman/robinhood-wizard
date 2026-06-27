@@ -10,7 +10,7 @@ vetted by a deterministic risk engine. Equities and ETFs only.
 
 ## Status
 
-Actively developed. **What works today (Phases 0–4e):**
+Actively developed. **What works today (Phases 0–5):**
 
 - **Authentication** to a Robinhood Agentic Trading account (browser consent → cached, auto-refreshed token).
 - **Read-only portfolio + history** — reconcile live holdings, sync order history into a local journal.
@@ -30,10 +30,9 @@ Actively developed. **What works today (Phases 0–4e):**
   and their relative weights per bucket; a deterministic allocator sizes positions (whole or
   fractional shares) to hit the targets and trims/buys to rebalance within a drift band; the
   risk engine vets every order. See **Bucketed strategies** below.
-
-**DryRun only.** There is **no order-execution path anywhere in the codebase yet** — `run`
-proposes and vets a plan, then stops. The risk engine is the hard gate and nothing can
-place an order. Live execution (Human-Approval / Autonomous modes) is a future phase.
+- **Order execution (Human-Approval mode)** — `wizard run <id> --execute` runs the full cycle
+  and, after you type `yes` to confirm, places the approved orders on your agentic Robinhood
+  account. The risk engine vets every order before any placement; a failure halts and reports.
 
 ## How it works
 
@@ -240,6 +239,37 @@ cycle degrades (it proceeds with your explicit `universe` + holdings and notes t
 and the risk engine still vets every proposed trade. **No orders are placed.** Discovery uses the
 web-search LLM, so provide your OpenAI key (e.g. via `--env-file .env`).
 
+### Placing real orders (HumanApproval)
+
+**DryRun is the default.** `wizard run <id>` never places an order — it proposes and vets a
+plan, then stops. To actually place orders, add `--execute`:
+
+```bash
+uv run --env-file .env wizard run sample-momentum --execute
+```
+
+The cycle runs the full pipeline (reconcile → research → plan → risk vet) exactly as in
+DryRun. After the vetted plan is shown, you are prompted to type `yes` to confirm. No bypass
+exists — anything other than the exact word `yes` cancels execution.
+
+**Order types by intent:**
+
+| Intent | Order type | Notes |
+|--------|-----------|-------|
+| Whole-share buy or sell | Limit order | Price-protected — the limit price comes from the risk-vetted price |
+| Fractional/notional buy or sell | Market order | Regular hours only — run during market hours |
+
+**Safety guarantees:**
+
+- Orders go **only to your agentic account** — the account is detected at runtime from the
+  broker's `agentic_allowed` flag; nothing is hardcoded.
+- The risk engine vets every order **before** any placement. An order rejected by the risk
+  engine is never submitted.
+- On a **place failure** (broker error, network issue, etc.) execution halts immediately and
+  reports the failure. Remaining approved orders in the same cycle are not attempted.
+- Every order — placed, skipped, or failed — is journaled to `~/.rh-wizard/wizard.db` for
+  audit. Each order carries a stable `ref_id` for idempotency.
+
 ### Strategy file format
 
 | Field | Required | Meaning |
@@ -382,7 +412,8 @@ strictly enforced.
   log output is run through a redaction filter.
 - The trading account is **detected at runtime** via `agentic_allowed` from the broker — no
   account number is hardcoded.
-- DryRun-only: no code path can place or cancel an order.
+- Real orders require explicit `--execute` plus a typed `yes` confirmation — DryRun (the
+  default) has no order-placement path.
 
 ## Development
 
@@ -408,8 +439,9 @@ Design docs live in `docs/superpowers/specs/`; per-phase implementation plans in
 - **Done:** scaffold/auth (0) · read-only portfolio + journal (1) · risk engine (2) · data
   layer (3) · DryRun cycle skeleton (4a) · LLM research + plan (4b-1) · web/news search
   (4b-2) · natural-language strategy compiler (4c) · dynamic universe discovery (4d) ·
-  **allocation buckets + allocation-aware planning (4e)**.
-- **Next:** order execution with Human-Approval / Autonomous modes and kill-switch enforcement.
+  allocation buckets + allocation-aware planning (4e) ·
+  **order execution — Human-Approval mode (5)**.
+- **Next:** Autonomous mode (scheduled, unattended execution) + kill-switch enforcement.
 
 ## License
 
