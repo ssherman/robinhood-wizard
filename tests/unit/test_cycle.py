@@ -322,3 +322,126 @@ def test_flat_cycle_unchanged_has_no_allocation():
         assert result.run.status == "completed"
         assert result.allocation is None
         assert result.recommendation is None
+
+
+def _fake_intent(symbol="AAPL"):
+    from rh_wizard.models.plan import TradeIntent
+
+    return TradeIntent(side="buy", symbol=symbol, quantity="1", limit_price="100")
+
+
+class _YesGate:
+    def confirm(self, vetted, portfolio, account):
+        self.account = account
+        return True
+
+
+class _NoGate:
+    def confirm(self, vetted, portfolio, account):
+        return False
+
+
+class _RecordingExecutor:
+    def __init__(self, review_ok=True, place_fails=False):
+        self._review_ok = review_ok
+        self._place_fails = place_fails
+        self.reviewed = []
+        self.placed = []
+
+    def review(self, intent, account):
+        from rh_wizard.models.order import ReviewResult
+
+        self.reviewed.append(intent.symbol)
+        return ReviewResult(ok=self._review_ok, alerts=[] if self._review_ok else ["blocked"])
+
+    def place(self, intent, account, ref_id):
+        from rh_wizard.models.order import OrderResult
+
+        self.placed.append((intent.symbol, ref_id))
+        status = "failed" if self._place_fails else "placed"
+        return OrderResult(
+            symbol=intent.symbol,
+            side=intent.side,
+            status=status,
+            order_type="limit",
+            quantity=intent.quantity,
+            ref_id=ref_id,
+            order_id=None if self._place_fails else "ord",
+        )
+
+
+def _human_approval():
+    from rh_wizard.models.cycle import CycleMode
+
+    return CycleMode.HUMAN_APPROVAL
+
+
+def test_dryrun_never_executes():
+    strategy = Strategy(id="m", name="M", universe=["AAPL"], signals_needed={Signal.PRICE})
+    with SqliteJournal(":memory:") as journal:
+        deps = _deps(journal)
+        ex = _RecordingExecutor()
+        deps.executor = ex
+        deps.approval = _YesGate()
+        with deps.broker:
+            result = run_cycle(strategy, deps)  # default DryRun
+        assert result.orders == []
+        assert ex.placed == []  # executor never called in DryRun
+
+
+def test_human_approval_places_approved_orders():
+    strategy = Strategy(id="m", name="M", universe=["AAPL"], signals_needed={Signal.PRICE})
+    with SqliteJournal(":memory:") as journal:
+        deps = _deps(journal)
+        ex = _RecordingExecutor()
+        deps.executor = ex
+        deps.approval = _YesGate()
+        with deps.broker:
+            result = run_cycle(strategy, deps, _human_approval())
+        assert result.run.status == "completed"
+        assert [o.symbol for o in result.orders] == ["AAPL"]
+        assert result.orders[0].status == "placed"
+        assert ex.placed and ex.placed[0][1]  # a ref_id was passed
+        assert deps.approval.account == "ACC1"  # the reconciled agentic account
+        assert journal.orders(result.run.run_id)[0]["status"] == "placed"
+
+
+def test_human_approval_declined_places_nothing():
+    strategy = Strategy(id="m", name="M", universe=["AAPL"], signals_needed={Signal.PRICE})
+    with SqliteJournal(":memory:") as journal:
+        deps = _deps(journal)
+        ex = _RecordingExecutor()
+        deps.executor = ex
+        deps.approval = _NoGate()
+        with deps.broker:
+            result = run_cycle(strategy, deps, _human_approval())
+        assert result.orders == []
+        assert ex.placed == []
+
+
+def test_review_alert_skips_order():
+    strategy = Strategy(id="m", name="M", universe=["AAPL"], signals_needed={Signal.PRICE})
+    with SqliteJournal(":memory:") as journal:
+        deps = _deps(journal)
+        ex = _RecordingExecutor(review_ok=False)
+        deps.executor = ex
+        deps.approval = _YesGate()
+        with deps.broker:
+            result = run_cycle(strategy, deps, _human_approval())
+        assert result.orders[0].status == "skipped"
+        assert ex.placed == []  # never placed after a blocking review
+
+
+def test_place_failure_halts_remaining():
+    # Two approved intents; the first place fails -> the second is never attempted.
+    strategy = Strategy(id="m", name="M", universe=["AAPL", "MSFT"], signals_needed={Signal.PRICE})
+    with SqliteJournal(":memory:") as journal:
+        deps = _deps(journal)
+        ex = _RecordingExecutor(place_fails=True)
+        deps.executor = ex
+        deps.approval = _YesGate()
+        with deps.broker:
+            result = run_cycle(strategy, deps, _human_approval())
+        statuses = [o.status for o in result.orders]
+        assert statuses == ["failed"]  # halted after the first failure
+        assert len(ex.placed) == 1  # the second was not attempted

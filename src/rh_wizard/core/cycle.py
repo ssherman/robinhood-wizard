@@ -9,7 +9,7 @@ caller opens the broker context. Reconciliation failure aborts the cycle cleanly
 from __future__ import annotations
 
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
 from rh_wizard.allocation.base import BucketRecommender
@@ -17,6 +17,7 @@ from rh_wizard.allocation.engine import allocate
 from rh_wizard.config.settings import Settings
 from rh_wizard.data.resolver import SignalResolver
 from rh_wizard.discovery.base import UniverseDiscoverer
+from rh_wizard.execution.base import ApprovalGate, OrderExecutor
 from rh_wizard.memory.journal import SqliteJournal
 from rh_wizard.memory.portfolio import enrich_with_quotes, reconcile
 from rh_wizard.models.allocation import AllocationRecommendation, AllocationReport
@@ -24,6 +25,7 @@ from rh_wizard.models.bucket import Bucket
 from rh_wizard.models.cycle import CycleMode, CycleRun
 from rh_wizard.models.discovery import DiscoveryResult
 from rh_wizard.models.market import MarketContext
+from rh_wizard.models.order import OrderResult
 from rh_wizard.models.plan import TradePlan, VettedPlan
 from rh_wizard.models.portfolio import PortfolioState
 from rh_wizard.models.research import ResearchReport
@@ -45,6 +47,8 @@ class CycleDeps:
     journal: SqliteJournal
     discoverer: UniverseDiscoverer | None = None
     recommender: BucketRecommender | None = None
+    executor: OrderExecutor | None = None
+    approval: ApprovalGate | None = None
 
 
 @dataclass
@@ -58,6 +62,7 @@ class CycleResult:
     discovery: DiscoveryResult | None = None
     recommendation: AllocationRecommendation | None = None
     allocation: AllocationReport | None = None
+    orders: list[OrderResult] = field(default_factory=list)
 
 
 def _now() -> str:
@@ -66,6 +71,42 @@ def _now() -> str:
 
 def _norm(symbol: str) -> str:
     return symbol.strip().upper()
+
+
+def _execute(
+    deps: CycleDeps, run: CycleRun, portfolio: PortfolioState, vetted: VettedPlan
+) -> list[OrderResult]:
+    """HumanApproval execution: confirm once, then review→place each approved intent.
+    No-op unless mode is HUMAN_APPROVAL with an executor + approval gate + approved intents.
+    review blocking-alert → skip+continue; place failure → halt remaining (spec §13)."""
+    if run.mode != CycleMode.HUMAN_APPROVAL.value:
+        return []
+    if deps.executor is None or deps.approval is None or not vetted.approved:
+        return []
+    account = portfolio.account_number
+    if not deps.approval.confirm(vetted, portfolio, account):
+        return []  # user declined; nothing placed
+    orders: list[OrderResult] = []
+    for intent in vetted.approved:
+        review = deps.executor.review(intent, account)
+        if not review.ok:
+            orders.append(
+                OrderResult(
+                    symbol=intent.symbol,
+                    side=intent.side,
+                    status="skipped",
+                    quantity=intent.quantity,
+                    amount=intent.amount,
+                    limit_price=intent.limit_price,
+                    raw={"alerts": review.alerts},
+                )
+            )
+            continue
+        result = deps.executor.place(intent, account, uuid.uuid4().hex)
+        orders.append(result)
+        if result.status == "failed":
+            break  # halt remaining; no silent partials
+    return orders
 
 
 def _bucket_discovery_view(strategy: Strategy, bucket: Bucket) -> Strategy:
@@ -160,13 +201,15 @@ def run_cycle(
         deps.journal.record_run(run)
         return CycleResult(run=run, portfolio=portfolio, market=market, discovery=discovery)
 
-    # Stage 9: DryRun — no execution (Phase 5 adds the executor). Stage 11: JOURNAL.
     run = run.model_copy(update={"status": "completed", "finished_at": _now()})
     deps.journal.record_run(run)
     deps.journal.record_plan(run.run_id, vetted)
     deps.journal.record_research(run.run_id, report)
     if discovery is not None:
         deps.journal.record_discovery(run.run_id, discovery)
+
+    orders = _execute(deps, run, portfolio, vetted)
+    deps.journal.record_orders(run.run_id, orders)
 
     return CycleResult(
         run=run,
@@ -176,6 +219,7 @@ def run_cycle(
         plan=plan,
         vetted=vetted,
         discovery=discovery,
+        orders=orders,
     )
 
 
@@ -224,6 +268,10 @@ def _run_bucketed(
     deps.journal.record_run(run)
     deps.journal.record_plan(run.run_id, vetted)
     deps.journal.record_allocation(run.run_id, allocation, recommendation)
+
+    orders = _execute(deps, run, portfolio, vetted)
+    deps.journal.record_orders(run.run_id, orders)
+
     return CycleResult(
         run=run,
         portfolio=portfolio,
@@ -232,4 +280,5 @@ def _run_bucketed(
         vetted=vetted,
         recommendation=recommendation,
         allocation=allocation,
+        orders=orders,
     )
