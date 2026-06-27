@@ -49,12 +49,19 @@ def test_review_equity_order_forwards_only_non_none():
 def test_place_equity_order_market_notional_with_ref_id():
     fake = ScriptedMCPClient([{"data": {"id": "ord-1"}}])
     with BrokerClient(fake) as broker:
-        broker.place_equity_order(
+        out = broker.place_equity_order(
             "ACC1", "MU", "buy", "market", dollar_amount="180.00", ref_id="r-1"
         )
+    assert out  # payload returned
     name, args = fake.calls[0]
     assert name == "place_equity_order"
-    assert args["type"] == "market"
-    assert args["dollar_amount"] == "180.00"
-    assert args["ref_id"] == "r-1"
-    assert "quantity" not in args and "limit_price" not in args
+    assert args == {
+        "account_number": "ACC1",
+        "symbol": "MU",
+        "side": "buy",
+        "type": "market",
+        "dollar_amount": "180.00",
+        "ref_id": "r-1",
+        "time_in_force": "gfd",
+        "market_hours": "regular_hours",
+    }
