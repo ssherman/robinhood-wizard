@@ -95,6 +95,68 @@ class BrokerClient:
             rows.extend(_extract_list(payload, "results") or _extract_list(payload, "tradability"))
         return rows
 
+    def review_equity_order(
+        self,
+        account_number: str,
+        symbol: str,
+        side: str,
+        order_type: str,
+        *,
+        quantity: str | None = None,
+        dollar_amount: str | None = None,
+        limit_price: str | None = None,
+        time_in_force: str = "gfd",
+        market_hours: str = "regular_hours",
+    ) -> dict:
+        """Simulate an equity order (quote + pre-trade alerts) without placing it. Forwards
+        only the non-None sizing params (the tool's schema is strict). Requires an
+        agentic_allowed account; the tool rejects non-agentic accounts."""
+        return self._call(
+            "review_equity_order",
+            **_order_args(
+                account_number,
+                symbol,
+                side,
+                order_type,
+                quantity,
+                dollar_amount,
+                limit_price,
+                time_in_force,
+                market_hours,
+            ),
+        )
+
+    def place_equity_order(
+        self,
+        account_number: str,
+        symbol: str,
+        side: str,
+        order_type: str,
+        *,
+        quantity: str | None = None,
+        dollar_amount: str | None = None,
+        limit_price: str | None = None,
+        ref_id: str | None = None,
+        time_in_force: str = "gfd",
+        market_hours: str = "regular_hours",
+    ) -> dict:
+        """Place a REAL equity order. Forwards only non-None params; ``ref_id`` is the
+        idempotency key (Robinhood dedups by it). Requires an agentic_allowed account."""
+        args = _order_args(
+            account_number,
+            symbol,
+            side,
+            order_type,
+            quantity,
+            dollar_amount,
+            limit_price,
+            time_in_force,
+            market_hours,
+        )
+        if ref_id is not None:
+            args["ref_id"] = ref_id
+        return self._call("place_equity_order", **args)
+
     def get_equity_orders(
         self,
         account_number: str,
@@ -186,6 +248,35 @@ def _next_cursor(payload: dict) -> str | None:
     if not isinstance(nxt, str) or not nxt:
         return None
     return (parse_qs(urlsplit(nxt).query).get("cursor") or [None])[0]
+
+
+def _order_args(
+    account_number: str,
+    symbol: str,
+    side: str,
+    order_type: str,
+    quantity: str | None,
+    dollar_amount: str | None,
+    limit_price: str | None,
+    time_in_force: str,
+    market_hours: str,
+) -> dict:
+    """Build the MCP order arguments, dropping None sizing params (strict schema)."""
+    args: dict = {
+        "account_number": account_number,
+        "symbol": symbol,
+        "side": side,
+        "type": order_type,
+        "time_in_force": time_in_force,
+        "market_hours": market_hours,
+    }
+    if quantity is not None:
+        args["quantity"] = quantity
+    if dollar_amount is not None:
+        args["dollar_amount"] = dollar_amount
+    if limit_price is not None:
+        args["limit_price"] = limit_price
+    return args
 
 
 def make_broker_client(settings: Settings, oauth_provider: Any) -> BrokerClient:
