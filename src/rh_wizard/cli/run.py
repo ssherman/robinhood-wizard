@@ -53,6 +53,20 @@ def _build_recommender(settings):
     return WebBucketRecommender(RetryingWebSearchLlm(OpenAiWebSearchLlm(settings)))
 
 
+def _build_executor(broker):
+    """Build the real order executor (patched in tests)."""
+    from rh_wizard.execution.robinhood import RobinhoodOrderExecutor
+
+    return RobinhoodOrderExecutor(broker)
+
+
+def _build_approval():
+    """Build the interactive approval gate (patched in tests)."""
+    from rh_wizard.cli.approval import CliApprovalGate
+
+    return CliApprovalGate()
+
+
 def list_strategies() -> None:
     registry = StrategyRegistry(paths.strategies_dir())
     ids = registry.list()
@@ -63,7 +77,7 @@ def list_strategies() -> None:
         typer.echo(sid)
 
 
-def run_strategy(strategy_id: str) -> None:
+def run_strategy(strategy_id: str, execute: bool = False) -> None:
     paths.ensure_home()
     settings = load_settings()
     registry = StrategyRegistry(paths.strategies_dir())
@@ -74,8 +88,6 @@ def run_strategy(strategy_id: str) -> None:
 
     broker = auth._build_broker(settings)
     with broker, SqliteJournal(paths.db_path()) as journal:
-        # Resolve the trading account up front so the data layer can call account-scoped tools
-        # (get_equity_tradability, for the fractionable signal) correctly.
         account_number = resolve_account_number(broker, settings)
         resolver = SignalResolver([RobinhoodDataSource(broker, account_number)])
         llm = _build_llm(settings)
@@ -95,6 +107,9 @@ def run_strategy(strategy_id: str) -> None:
                 else None
             ),
             recommender=_build_recommender(settings) if strategy.buckets else None,
+            executor=_build_executor(broker) if execute else None,
+            approval=_build_approval() if execute else None,
         )
-        result = run_cycle(strategy, deps, CycleMode.DRY_RUN)
+        mode = CycleMode.HUMAN_APPROVAL if execute else CycleMode.DRY_RUN
+        result = run_cycle(strategy, deps, mode)
     typer.echo(render_cycle_result(result))
