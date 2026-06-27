@@ -40,10 +40,12 @@ def _unwrap(raw: dict) -> dict:
 
 
 def _parse_alerts(raw: dict) -> list[str]:
-    alerts = _unwrap(raw).get("alerts")
-    if not alerts:
-        return []
-    return [a if isinstance(a, str) else str(a) for a in alerts]
+    d = _unwrap(raw)
+    for key in ("alerts", "warnings", "checks"):
+        alerts = d.get(key)
+        if alerts:
+            return [a if isinstance(a, str) else str(a) for a in alerts]
+    return []
 
 
 def _parse_order_id(raw: dict) -> str | None:
@@ -86,6 +88,19 @@ class RobinhoodOrderExecutor:
                 ref_id=ref_id,
                 raw={"error": str(exc)},
             )
+        order_id = _parse_order_id(raw)
+        if order_id is None:
+            return OrderResult(
+                symbol=intent.symbol,
+                side=intent.side,
+                status="failed",
+                order_type=order_type,
+                quantity=intent.quantity,
+                amount=intent.amount,
+                limit_price=intent.limit_price,
+                ref_id=ref_id,
+                raw={"error": "place returned no order id", "response": raw},
+            )
         return OrderResult(
             symbol=intent.symbol,
             side=intent.side,
@@ -94,7 +109,7 @@ class RobinhoodOrderExecutor:
             quantity=intent.quantity,
             amount=intent.amount,
             limit_price=intent.limit_price,
-            order_id=_parse_order_id(raw),
+            order_id=order_id,
             ref_id=ref_id,
             raw=raw,
         )

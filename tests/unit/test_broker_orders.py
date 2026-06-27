@@ -65,3 +65,28 @@ def test_place_equity_order_market_notional_with_ref_id():
         "time_in_force": "gfd",
         "market_hours": "regular_hours",
     }
+
+
+def test_place_equity_order_raises_on_error_result():
+    import pytest
+
+    from rh_wizard.broker.client import BrokerError
+
+    err = {
+        "status": "error",
+        "content": [{"text": "Tool execution failed: insufficient buying power"}],
+    }
+    fake = ScriptedMCPClient([err])
+    with BrokerClient(fake) as broker, pytest.raises(BrokerError):
+        broker.place_equity_order("ACC1", "AAPL", "buy", "limit", quantity="1", limit_price="100")
+
+
+def test_review_equity_order_raises_on_error_result():
+    import pytest
+
+    from rh_wizard.broker.client import BrokerError
+
+    err = {"isError": True, "content": [{"text": "market closed"}]}
+    fake = ScriptedMCPClient([err])
+    with BrokerClient(fake) as broker, pytest.raises(BrokerError):
+        broker.review_equity_order("ACC1", "AAPL", "buy", "limit", quantity="1", limit_price="100")

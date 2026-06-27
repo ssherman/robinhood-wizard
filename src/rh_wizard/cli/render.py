@@ -226,9 +226,16 @@ def render_cycle_result(result) -> str:
         table.add_column("Status")
         table.add_column("Order id")
         for o in orders:
-            alerts = o.raw.get("alerts", []) if isinstance(o.raw, dict) else []
-            note = o.order_id or ", ".join(alerts)
-            table.add_row(o.side, o.symbol, o.status, note or "-")
+            if o.order_id:
+                note = o.order_id
+            elif isinstance(o.raw, dict) and o.raw.get("error"):
+                note = str(o.raw["error"])
+            elif isinstance(o.raw, dict):
+                alerts = o.raw.get("alerts", [])
+                note = ", ".join(alerts) if alerts else "-"
+            else:
+                note = "-"
+            table.add_row(o.side, o.symbol, o.status, note)
         lines.append(render_to_str(table).rstrip("\n"))
 
     if getattr(result, "orders", None):

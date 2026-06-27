@@ -119,6 +119,67 @@ def test_review_broker_exception_blocks():
     assert any("review 500" in a for a in rv.alerts)
 
 
+def test_place_through_brokerclient_error_result_is_failed():
+    from rh_wizard.broker.client import BrokerClient
+
+    err = {"status": "error", "content": [{"text": "Tool execution failed: rejected"}]}
+
+    class _MCP:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def list_tools_sync(self):
+            return []
+
+        def call_tool_sync(self, *, tool_use_id, name, arguments=None):
+            return err
+
+    ex = RobinhoodOrderExecutor(BrokerClient(_MCP()))
+    intent = TradeIntent(side="buy", symbol="AAPL", quantity="1", limit_price="100")
+    out = ex.place(intent, "ACC1", "r")
+    assert out.status == "failed"  # error result -> BrokerError -> failed (NOT "placed")
+
+
+def test_review_through_brokerclient_error_result_blocks():
+    from rh_wizard.broker.client import BrokerClient
+
+    err = {"status": "error", "content": [{"text": "market closed"}]}
+
+    class _MCP:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def list_tools_sync(self):
+            return []
+
+        def call_tool_sync(self, *, tool_use_id, name, arguments=None):
+            return err
+
+    rv = RobinhoodOrderExecutor(BrokerClient(_MCP())).review(
+        TradeIntent(side="buy", symbol="AAPL", quantity="1", limit_price="100"), "ACC1"
+    )
+    assert rv.ok is False  # errored review must NOT fail open
+
+
+def test_place_missing_order_id_is_failed():
+    class NoIdBroker:
+        def place_equity_order(
+            self, account_number, symbol, side, order_type, *, ref_id=None, **kw
+        ):  # noqa: E501
+            return {"data": {}}  # success-shaped but no order id
+
+    out = RobinhoodOrderExecutor(NoIdBroker()).place(
+        TradeIntent(side="buy", symbol="AAPL", quantity="1", limit_price="100"), "ACC1", "r"
+    )
+    assert out.status == "failed"
+
+
 @pytest.mark.skipif(
     not (os.environ.get("RH_WIZARD_LIVE") and os.environ.get("RH_WIZARD_LIVE_EXECUTE")),
     reason="live review test: needs RH_WIZARD_LIVE=1 and RH_WIZARD_LIVE_EXECUTE=1 + a cached token",

@@ -15,6 +15,25 @@ from rh_wizard.config.settings import Settings
 _MAX_SYMBOLS_PER_CALL = 10  # Robinhood equity per-symbol tools cap at 10 symbols per call.
 
 
+class BrokerError(Exception):
+    """Raised when a broker tool call returns an error result (not a transport exception)."""
+
+
+def _is_error_result(raw) -> bool:
+    """A Strands tool result that signals failure (error status / isError flag)."""
+    return isinstance(raw, dict) and (raw.get("status") == "error" or raw.get("isError") is True)
+
+
+def _error_text(raw) -> str:
+    content = raw.get("content") if isinstance(raw, dict) else None
+    if isinstance(content, list):
+        for item in content:
+            text = item.get("text") if isinstance(item, dict) else None
+            if isinstance(text, str) and text:
+                return text
+    return "tool returned an error result"
+
+
 class BrokerClient:
     def __init__(self, mcp_client: Any) -> None:
         self._mcp = mcp_client
@@ -29,13 +48,23 @@ class BrokerClient:
     def list_tool_names(self) -> list[str]:
         return [t.tool_name for t in self._mcp.list_tools_sync()]
 
-    def _call(self, name: str, **arguments: Any) -> dict:
+    def _invoke(self, name: str, **arguments: Any) -> Any:
         # Strands requires a unique tool_use_id per call.
-        raw = self._mcp.call_tool_sync(
+        return self._mcp.call_tool_sync(
             tool_use_id=f"rhw-{uuid.uuid4().hex}",
             name=name,
             arguments=arguments or None,
         )
+
+    def _call(self, name: str, **arguments: Any) -> dict:
+        return _coerce_payload(self._invoke(name, **arguments))
+
+    def _call_strict(self, name: str, **arguments: Any) -> dict:
+        """Like _call but RAISES BrokerError on a tool error/transport-failure result.
+        Used for order placement/review where a silent error must never look like success."""
+        raw = self._invoke(name, **arguments)
+        if _is_error_result(raw):
+            raise BrokerError(f"{name} failed: {_error_text(raw)}")
         return _coerce_payload(raw)
 
     def get_accounts(self) -> list[dict]:
@@ -111,7 +140,7 @@ class BrokerClient:
         """Simulate an equity order (quote + pre-trade alerts) without placing it. Forwards
         only the non-None sizing params (the tool's schema is strict). Requires an
         agentic_allowed account; the tool rejects non-agentic accounts."""
-        return self._call(
+        return self._call_strict(
             "review_equity_order",
             **_order_args(
                 account_number,
@@ -155,7 +184,7 @@ class BrokerClient:
         )
         if ref_id is not None:
             args["ref_id"] = ref_id
-        return self._call("place_equity_order", **args)
+        return self._call_strict("place_equity_order", **args)
 
     def get_equity_orders(
         self,

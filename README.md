@@ -270,6 +270,16 @@ exists — anything other than the exact word `yes` cancels execution.
 - Every order — placed, skipped, or failed — is journaled to `~/.rh-wizard/wizard.db` for
   audit. Each order carries a stable `ref_id` for idempotency.
 
+> **Caution — open orders from a previous cycle:** Do not re-run `--execute` while a previous
+> cycle's orders are still open/unfilled. Reconciliation sizes against *filled* positions, not
+> open orders, so a still-open whole-share limit buy could be placed again (full open-order
+> netting is a later phase). Wait for orders to fill or cancel before running the next cycle.
+
+> **Caution — live review response shape:** The live `review_equity_order` response shape is
+> verified on first use. Before relying on review results in production, run the opt-in live
+> review test (or one real `--execute` with a 1–2 symbol, small plan and watch the review output)
+> during market hours to confirm alert parsing behaves as expected.
+
 ### Strategy file format
 
 | Field | Required | Meaning |
