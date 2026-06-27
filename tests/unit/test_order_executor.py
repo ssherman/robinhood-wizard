@@ -88,3 +88,31 @@ def test_place_failure_returns_failed_orderresult():
 
 def test_satisfies_executor_protocol():
     assert isinstance(RobinhoodOrderExecutor(FakeBroker()), OrderExecutor)
+
+
+def test_order_params_raises_on_unsizeable_intent():
+    import pytest
+
+    intent = TradeIntent(side="buy", symbol="X", limit_price="100")  # no amount, no quantity
+    with pytest.raises(ValueError):
+        _order_params(intent)
+
+
+def test_place_malformed_intent_returns_failed_not_raises():
+    # A malformed (unsizeable) intent must NOT raise out of place — it returns failed.
+    ex = RobinhoodOrderExecutor(FakeBroker())
+    intent = TradeIntent(side="buy", symbol="X", limit_price="100")  # unsizeable
+    out = ex.place(intent, "ACC1", "r")
+    assert out.status == "failed"
+
+
+def test_review_broker_exception_blocks():
+    class BoomReviewBroker(FakeBroker):
+        def review_equity_order(self, *a, **k):
+            raise RuntimeError("review 500")
+
+    rv = RobinhoodOrderExecutor(BoomReviewBroker()).review(
+        TradeIntent(side="buy", symbol="AAPL", quantity="3", limit_price="190"), "ACC1"
+    )
+    assert rv.ok is False
+    assert any("review 500" in a for a in rv.alerts)

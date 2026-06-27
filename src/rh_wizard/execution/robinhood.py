@@ -57,8 +57,8 @@ class RobinhoodOrderExecutor:
         self._broker = broker
 
     def review(self, intent: TradeIntent, account: str) -> ReviewResult:
-        order_type, params = _order_params(intent)
         try:
+            order_type, params = _order_params(intent)
             raw = self._broker.review_equity_order(
                 account, intent.symbol, intent.side, order_type, **params
             )
@@ -69,8 +69,8 @@ class RobinhoodOrderExecutor:
         return ReviewResult(ok=not alerts, estimated_cost=cost, alerts=alerts, raw=raw)
 
     def place(self, intent: TradeIntent, account: str, ref_id: str) -> OrderResult:
-        order_type, params = _order_params(intent)
         try:
+            order_type, params = _order_params(intent)
             raw = self._broker.place_equity_order(
                 account, intent.symbol, intent.side, order_type, ref_id=ref_id, **params
             )
@@ -79,7 +79,7 @@ class RobinhoodOrderExecutor:
                 symbol=intent.symbol,
                 side=intent.side,
                 status="failed",
-                order_type=order_type,
+                order_type="",
                 quantity=intent.quantity,
                 amount=intent.amount,
                 limit_price=intent.limit_price,
