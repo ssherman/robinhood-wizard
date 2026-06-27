@@ -324,12 +324,6 @@ def test_flat_cycle_unchanged_has_no_allocation():
         assert result.recommendation is None
 
 
-def _fake_intent(symbol="AAPL"):
-    from rh_wizard.models.plan import TradeIntent
-
-    return TradeIntent(side="buy", symbol=symbol, quantity="1", limit_price="100")
-
-
 class _YesGate:
     def confirm(self, vetted, portfolio, account):
         self.account = account
@@ -387,6 +381,7 @@ def test_dryrun_never_executes():
             result = run_cycle(strategy, deps)  # default DryRun
         assert result.orders == []
         assert ex.placed == []  # executor never called in DryRun
+        assert ex.reviewed == []  # review is also never called in DryRun
 
 
 def test_human_approval_places_approved_orders():
@@ -445,3 +440,28 @@ def test_place_failure_halts_remaining():
         statuses = [o.status for o in result.orders]
         assert statuses == ["failed"]  # halted after the first failure
         assert len(ex.placed) == 1  # the second was not attempted
+
+
+def test_human_approval_places_orders_from_bucketed_path():
+    from rh_wizard.models.bucket import Bucket
+
+    # 10% target -> investable $9000 * 10% = $900 -> 9% of $10000 portfolio < 20% cap -> approved
+    strategy = Strategy(
+        id="b",
+        name="B",
+        signals_needed={Signal.PRICE},
+        buckets=[Bucket(id="ai", target_pct="10", universe=["AAPL"])],
+    )
+    with SqliteJournal(":memory:") as journal:
+        deps = _deps(journal)
+        deps.recommender = _FakeRecommender()
+        ex = _RecordingExecutor()
+        deps.executor = ex
+        deps.approval = _YesGate()
+        with deps.broker:
+            result = run_cycle(strategy, deps, _human_approval())
+        assert result.run.status == "completed"
+        assert [o.symbol for o in result.orders] == ["AAPL"]  # bucketed path reached the executor
+        assert result.orders[0].status == "placed"
+        assert ex.placed  # the executor was actually invoked from _run_bucketed
+        assert journal.orders(result.run.run_id)[0]["status"] == "placed"
