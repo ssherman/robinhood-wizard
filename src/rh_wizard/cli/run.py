@@ -88,6 +88,8 @@ def run_strategy(strategy_id: str, execute: bool = False) -> None:
 
     broker = auth._build_broker(settings)
     with broker, SqliteJournal(paths.db_path()) as journal:
+        # Resolve the trading account up front so the data layer can call account-scoped tools
+        # (get_equity_tradability, for the fractionable signal) correctly.
         account_number = resolve_account_number(broker, settings)
         resolver = SignalResolver([RobinhoodDataSource(broker, account_number)])
         llm = _build_llm(settings)

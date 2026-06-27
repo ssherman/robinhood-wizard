@@ -233,12 +233,16 @@ def test_run_without_execute_places_nothing(monkeypatch, tmp_path):
         def place(self, intent, account, ref_id):
             raise AssertionError("executor must not run in DryRun")
 
+    built = []
     monkeypatch.setattr(auth, "_build_broker", lambda settings: FakeBroker())
     monkeypatch.setattr(run_module, "_build_llm", lambda settings: FakeStructuredLlm())
-    monkeypatch.setattr(run_module, "_build_executor", lambda broker: BoomExecutor())
+    monkeypatch.setattr(
+        run_module, "_build_executor", lambda broker: built.append(1) or BoomExecutor()
+    )
     result = runner.invoke(app, ["run", "demo"])  # no --execute
     assert result.exit_code == 0
     assert "DryRun" in result.output
+    assert built == []  # _build_executor is not even called without --execute
 
 
 @pytest.mark.skipif(
