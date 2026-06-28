@@ -156,15 +156,21 @@ Make under-deploy visible, never silent.
   *"Cannabis Policy Optionality: $300 left as cash — 5 names rejected (exceeds max trades per
   cycle)."*
 - Enrichment is a **pure** helper in `core/deploy.py`,
-  `deployment_summary(report, strategy, recommendation, vetted, investable) -> AllocationReport`,
-  returning a new report (`model_copy`) with the per-bucket fields filled and notes appended. It
+  `deployment_summary(report, strategy, recommendation, vetted) -> AllocationReport` (budget is
+  recomputed from `report.investable` × `target_pct`), returning a new report (`model_copy`) with
+  the per-bucket fields filled and notes appended. It
   maps approved/rejected buy symbols → buckets via a newly-exposed public pure helper
   `bucket_membership(strategy, recommendation) -> dict[str, str]` (today's private `_membership`
   in `allocation/engine.py`).
 - **`cli/render.py`:** add a **Deployed** column to the allocation table (showing `deployed` and
   its % of the bucket `budget`, with a `($X left)` suffix when `cash_left > 0`), and render
-  `allocation.notes` (currently unrendered). The journal carries the new fields through `record_allocation` automatically via
-  pydantic dump (verify in implementation).
+  `allocation.notes` (currently unrendered).
+- **Journaling is unchanged.** `memory/journal.py::record_allocation` keeps its current explicit
+  column set (there is no schema-migration framework — tables are `CREATE TABLE IF NOT EXISTS`),
+  so the new `BucketAllocation` fields are simply ignored on write (safe, no breakage).
+  `deployed`/`cash_left` are render-time values and remain reconstructable from the already-
+  journaled approved `plan_intents` + membership, so no durable audit is lost. (Persisting them
+  is a noted follow-up if/when a migration mechanism lands.)
 
 ### 4.5 Wiring
 
@@ -210,6 +216,8 @@ Make under-deploy visible, never silent.
   to fractionable survivors (needs the allocator to report per-name remainders + a second
   injection path; marginal gain on a fractionable-heavy broker).
 - **Per-bucket trade cap** as a hard ceiling (distinct from the fairness fix here).
+- **Persisting `deployed`/`cash_left` to the journal** (needs a schema-migration mechanism the
+  journal doesn't have yet; today these are render-time and derivable from journaled intents).
 - Autonomous mode + drawdown kill-switch.
 
 ## 8. Workflow
