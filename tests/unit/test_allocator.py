@@ -401,3 +401,27 @@ def test_bucketed_trim_sell_carries_fixed_rationale():
     )
     sells = [i for i in plan.intents if i.side == "sell"]
     assert sells and all(i.rationale == "trim to bucket target" for i in sells)
+
+
+def test_exclude_drops_name_and_redistributes_to_survivors():
+    # investable 900, single bucket 100%. Without exclude: NVDA 600 / MSFT 300.
+    # Excluding NVDA hands its whole share to MSFT -> MSFT gets the full 900.
+    strat = _strategy([Bucket(id="ai", target_pct="100")])
+    rec = AllocationRecommendation(
+        buckets=[
+            BucketRecommendation(
+                bucket_id="ai",
+                positions=[
+                    RecommendedPosition(symbol="NVDA", weight="2"),
+                    RecommendedPosition(symbol="MSFT", weight="1"),
+                ],
+            )
+        ]
+    )
+    market = _market({"NVDA": "100", "MSFT": "200"})
+    plan, _ = allocate(
+        strat, rec, RiskPolicy(), _portfolio(cash="1000"), market, exclude=frozenset({"NVDA"})
+    )
+    by = {i.symbol: i for i in plan.intents}
+    assert "NVDA" not in by
+    assert by["MSFT"].amount == Decimal("900")

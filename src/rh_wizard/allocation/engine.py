@@ -93,6 +93,7 @@ def _split_buys(
     allow_fractional: bool,
     member: dict[str, str],
     bucket_id: str,
+    exclude: frozenset[str],
 ) -> list[TradeIntent]:
     if rec is None or shortfall <= 0:
         return []
@@ -102,6 +103,7 @@ def _split_buys(
         if _norm(p.symbol) in market
         and market[_norm(p.symbol)].price
         and member.get(_norm(p.symbol)) == bucket_id
+        and _norm(p.symbol) not in exclude
     ]
     if not priced:
         return []
@@ -168,6 +170,7 @@ def allocate(
     policy: RiskPolicy,
     portfolio: PortfolioState,
     market: dict[str, SymbolData],
+    exclude: frozenset[str] = frozenset(),
 ) -> tuple[TradePlan, AllocationReport]:
     portfolio_value = _portfolio_value(portfolio)
     investable = portfolio_value * (1 - policy.cash_reserve_pct / 100)
@@ -198,6 +201,7 @@ def allocate(
                 strategy.allow_fractional,
                 member,
                 bucket.id,
+                exclude,
             )
             if buys:
                 buy_intents.extend(buys)
