@@ -58,9 +58,7 @@ def _rec(bucket_id, *symbol_weights):
         buckets=[
             BucketRecommendation(
                 bucket_id=bucket_id,
-                positions=[
-                    RecommendedPosition(symbol=s, weight=w) for s, w in symbol_weights
-                ],
+                positions=[RecommendedPosition(symbol=s, weight=w) for s, w in symbol_weights],
             )
         ]
     )

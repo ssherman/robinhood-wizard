@@ -374,9 +374,7 @@ def test_bucketed_buy_carries_position_thesis():
         buckets=[
             BucketRecommendation(
                 bucket_id="ai",
-                positions=[
-                    RecommendedPosition(symbol="NVDA", weight="1", thesis="memory upcycle")
-                ],
+                positions=[RecommendedPosition(symbol="NVDA", weight="1", thesis="memory upcycle")],
             )
         ]
     )
@@ -428,9 +426,7 @@ def test_exclude_drops_name_and_redistributes_to_survivors():
 
 
 def test_buys_interleaved_round_robin_by_rank_across_buckets():
-    strat = _strategy(
-        [Bucket(id="a", target_pct="50"), Bucket(id="b", target_pct="50")]
-    )
+    strat = _strategy([Bucket(id="a", target_pct="50"), Bucket(id="b", target_pct="50")])
     rec = AllocationRecommendation(
         buckets=[
             BucketRecommendation(

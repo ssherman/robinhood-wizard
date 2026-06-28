@@ -117,9 +117,7 @@ def _split_buys(
         weights = [Decimal("1") for _ in priced]
         total = Decimal(len(priced))
     # Rank by weight desc, then symbol asc, so allocate() can interleave buckets fairly by rank.
-    ranked = sorted(
-        zip(priced, weights, strict=True), key=lambda pw: (-pw[1], _norm(pw[0].symbol))
-    )
+    ranked = sorted(zip(priced, weights, strict=True), key=lambda pw: (-pw[1], _norm(pw[0].symbol)))
     intents: list[TradeIntent] = []
     for pos, w in ranked:
         sym = _norm(pos.symbol)
