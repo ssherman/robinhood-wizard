@@ -144,6 +144,43 @@ def test_render_includes_allocation_block():
     assert "https://e/x" in out  # recommendation source
 
 
+def test_render_shows_deployed_and_cash_left_and_notes():
+    from decimal import Decimal
+
+    from rh_wizard.cli.render import render_cycle_result
+    from rh_wizard.core.cycle import CycleResult
+    from rh_wizard.models.allocation import AllocationReport, BucketAllocation
+    from rh_wizard.models.cycle import CycleRun
+    from rh_wizard.models.plan import VettedPlan
+
+    run = CycleRun(run_id="r1", strategy_id="b", mode="dryrun", started_at="t", status="completed")
+    result = CycleResult(
+        run=run,
+        vetted=VettedPlan(),
+        allocation=AllocationReport(
+            buckets=[
+                BucketAllocation(
+                    bucket_id="weed",
+                    name="Cannabis",
+                    target_pct=Decimal("10"),
+                    current_pct=Decimal("0"),
+                    drift_pct=Decimal("-10"),
+                    within_band=False,
+                    action="no candidates",
+                    budget=Decimal("300"),
+                    deployed=Decimal("0"),
+                    cash_left=Decimal("300"),
+                )
+            ],
+            investable=Decimal("3000"),
+            notes=["Cannabis: $300.00 left as cash — 5 name(s) rejected (max trades)"],
+        ),
+    )
+    out = render_cycle_result(result)
+    assert "Deployed" in out  # new column header
+    assert "left as cash" in out  # note rendered
+
+
 def test_render_shows_execution_summary():
     result = CycleResult(
         run=_run(),
