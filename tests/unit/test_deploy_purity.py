@@ -1,4 +1,4 @@
-"""core/deploy.py must stay pure + brain-agnostic: no I/O layers (broker, auth, memory, cli, llm)."""  # noqa: E501
+"""deploy.py must be free of I/O layers: broker, auth, memory, cli, llm."""
 
 import ast
 from pathlib import Path
