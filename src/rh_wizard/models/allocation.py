@@ -44,6 +44,9 @@ class BucketAllocation(pydantic.BaseModel):
     within_band: bool
     # "buy" | "sell" | "hold (overweight, buy_only)" | "skipped (within band)" | "no candidates"
     action: str
+    budget: Decimal = Decimal("0")  # target dollars for this bucket (target_pct × investable)
+    deployed: Decimal = Decimal("0")  # approved-buy dollars mapped to this bucket
+    cash_left: Decimal = Decimal("0")  # budget − deployed, floored at 0
 
 
 class AllocationReport(pydantic.BaseModel):
