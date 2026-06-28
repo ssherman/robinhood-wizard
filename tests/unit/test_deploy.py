@@ -121,6 +121,33 @@ def test_interleaving_prevents_late_bucket_starvation_under_trade_cap():
     assert approved_buckets == {"a", "b", "c"}
 
 
+def test_zero_survivor_bucket_left_as_cash_with_reason_note():
+    strat = Strategy(
+        id="s", name="S", buckets=[Bucket(id="weed", name="Cannabis", target_pct="100")]
+    )
+    rec = _rec("weed", ("BAD", "1"))  # price 3 < min_price 5 -> rejected, no survivor
+    market = _ctx(_sym("BAD", "3"))
+    _, report, _ = complete_allocation(strat, rec, _policy(), _portfolio("1000"), market)
+    b = report.buckets[0]
+    assert b.budget == Decimal("1000")
+    assert b.deployed == Decimal("0")
+    assert b.cash_left == Decimal("1000")
+    assert any(
+        "Cannabis" in n and "left as cash" in n and "liquidity floor" in n for n in report.notes
+    )
+
+
+def test_successful_redistribution_reports_full_deploy_no_note():
+    strat = Strategy(id="s", name="S", buckets=[Bucket(id="ai", name="AI", target_pct="100")])
+    rec = _rec("ai", ("GOOD", "1"), ("BAD", "1"))
+    market = _ctx(_sym("GOOD", "100"), _sym("BAD", "3"))
+    _, report, _ = complete_allocation(strat, rec, _policy(), _portfolio("1000"), market)
+    b = report.buckets[0]
+    assert b.deployed == Decimal("1000")
+    assert b.cash_left == Decimal("0")
+    assert report.notes == []
+
+
 def test_complete_allocation_is_deterministic():
     strat = Strategy(id="s", name="S", buckets=[Bucket(id="ai", target_pct="100")])
     rec = _rec("ai", ("GOOD", "2"), ("ALSO", "1"), ("BAD", "1"))

@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from decimal import Decimal
 
-from rh_wizard.allocation.engine import allocate
+from rh_wizard.allocation.engine import allocate, bucket_membership
 from rh_wizard.models.allocation import AllocationRecommendation, AllocationReport
 from rh_wizard.models.market import MarketContext
 from rh_wizard.models.plan import TradeIntent, TradePlan, VettedPlan
@@ -36,6 +36,62 @@ def _order_value(intent: TradeIntent) -> Decimal:
 
 def _deployed(vetted: VettedPlan) -> Decimal:
     return sum((_order_value(i) for i in vetted.approved if i.side == _BUY), Decimal("0"))
+
+
+def _norm(symbol: str) -> str:
+    return symbol.strip().upper()
+
+
+def _dominant(reasons: list[str]) -> str:
+    counts: dict[str, int] = {}
+    for r in reasons:
+        counts[r] = counts.get(r, 0) + 1
+    # Most frequent reason; ties broken alphabetically for determinism.
+    return sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))[0][0]
+
+
+def deployment_summary(
+    report: AllocationReport,
+    strategy: Strategy,
+    recommendation: AllocationRecommendation,
+    vetted: VettedPlan,
+) -> AllocationReport:
+    member = bucket_membership(strategy, recommendation)
+    investable = report.investable
+    deployed_by_bucket: dict[str, Decimal] = {}
+    for i in vetted.approved:
+        if i.side != _BUY:
+            continue
+        b = member.get(_norm(i.symbol))
+        if b is not None:
+            deployed_by_bucket[b] = deployed_by_bucket.get(b, Decimal("0")) + _order_value(i)
+    rejected_by_bucket: dict[str, list[str]] = {}
+    for r in vetted.rejected:
+        if r.intent.side != _BUY:
+            continue
+        b = member.get(_norm(r.intent.symbol))
+        if b is not None:
+            rejected_by_bucket.setdefault(b, []).append(r.reason)
+
+    new_buckets = []
+    notes = list(report.notes)
+    for b in report.buckets:
+        budget = (b.target_pct / 100 * investable) if investable > 0 else Decimal("0")
+        deployed = deployed_by_bucket.get(b.bucket_id, Decimal("0"))
+        cash_left = budget - deployed
+        if cash_left < 0:
+            cash_left = Decimal("0")
+        new_buckets.append(
+            b.model_copy(update={"budget": budget, "deployed": deployed, "cash_left": cash_left})
+        )
+        reasons = rejected_by_bucket.get(b.bucket_id, [])
+        if cash_left > 0 and reasons:
+            label = b.name or b.bucket_id
+            notes.append(
+                f"{label}: ${cash_left:.2f} left as cash — "
+                f"{len(reasons)} name(s) rejected ({_dominant(reasons)})"
+            )
+    return report.model_copy(update={"buckets": new_buckets, "notes": notes})
 
 
 def complete_allocation(
@@ -68,4 +124,5 @@ def complete_allocation(
             best = (plan, report, vetted, deployed)
 
     plan, report, vetted, _ = best
+    report = deployment_summary(report, strategy, recommendation, vetted)
     return plan, report, vetted
