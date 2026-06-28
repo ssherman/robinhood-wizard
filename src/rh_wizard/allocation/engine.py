@@ -64,18 +64,26 @@ def _membership(strategy: Strategy, recommendation: AllocationRecommendation) ->
 
 
 def _buy_intent(
-    symbol: str, dollars: Decimal, data: SymbolData, allow_fractional: bool
+    symbol: str,
+    dollars: Decimal,
+    data: SymbolData,
+    allow_fractional: bool,
+    rationale: str = "",
 ) -> TradeIntent | None:
     price = data.price
     if price is None or price <= 0 or dollars <= 0:
         return None
     fractional = allow_fractional and bool(data.fractionable)
     if fractional:
-        return TradeIntent(side=_BUY, symbol=symbol, amount=dollars, limit_price=price)
+        return TradeIntent(
+            side=_BUY, symbol=symbol, amount=dollars, limit_price=price, rationale=rationale
+        )
     qty = (dollars / price).to_integral_value(rounding=ROUND_DOWN)
     if qty <= 0:
         return None
-    return TradeIntent(side=_BUY, symbol=symbol, quantity=qty, limit_price=price)
+    return TradeIntent(
+        side=_BUY, symbol=symbol, quantity=qty, limit_price=price, rationale=rationale
+    )
 
 
 def _split_buys(
@@ -108,7 +116,7 @@ def _split_buys(
     for pos, w in zip(priced, weights, strict=True):
         sym = _norm(pos.symbol)
         dollars = shortfall * w / total
-        intent = _buy_intent(sym, dollars, market[sym], allow_fractional)
+        intent = _buy_intent(sym, dollars, market[sym], allow_fractional, rationale=pos.thesis)
         if intent is not None:
             intents.append(intent)
     return intents
@@ -142,7 +150,15 @@ def _trim_sells(
             qty = (dollars / data.price).to_integral_value(rounding=ROUND_DOWN)
         if qty <= 0:
             continue
-        intents.append(TradeIntent(side=_SELL, symbol=sym, quantity=qty, limit_price=data.price))
+        intents.append(
+            TradeIntent(
+                side=_SELL,
+                symbol=sym,
+                quantity=qty,
+                limit_price=data.price,
+                rationale="trim to bucket target",
+            )
+        )
     return intents
 
 

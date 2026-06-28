@@ -366,3 +366,38 @@ def test_sells_are_ordered_before_buys():
     assert sides[0] == "sell"  # NVDA trim comes first
     assert "buy" in sides  # XOM buy after
     assert sides.index("sell") < sides.index("buy")
+
+
+def test_bucketed_buy_carries_position_thesis():
+    strat = _strategy([Bucket(id="ai", target_pct="100")])
+    rec = AllocationRecommendation(
+        buckets=[
+            BucketRecommendation(
+                bucket_id="ai",
+                positions=[
+                    RecommendedPosition(symbol="NVDA", weight="1", thesis="memory upcycle")
+                ],
+            )
+        ]
+    )
+    plan, _ = allocate(strat, rec, RiskPolicy(), _portfolio(cash="1000"), _market({"NVDA": "100"}))
+    assert plan.intents[0].rationale == "memory upcycle"
+
+
+def test_bucketed_trim_sell_carries_fixed_rationale():
+    held = [
+        Position(
+            symbol="NVDA", quantity="9", average_cost="100", cost_basis="900", market_value="900"
+        )
+    ]
+    strat = _strategy([Bucket(id="ai", target_pct="10")], rebalance_mode="full")
+    rec = AllocationRecommendation(
+        buckets=[
+            BucketRecommendation(bucket_id="ai", positions=[RecommendedPosition(symbol="NVDA")])
+        ]
+    )
+    plan, _ = allocate(
+        strat, rec, RiskPolicy(), _portfolio(cash="1000", positions=held), _market({"NVDA": "100"})
+    )
+    sells = [i for i in plan.intents if i.side == "sell"]
+    assert sells and all(i.rationale == "trim to bucket target" for i in sells)
