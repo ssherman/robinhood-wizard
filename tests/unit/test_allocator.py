@@ -425,3 +425,45 @@ def test_exclude_drops_name_and_redistributes_to_survivors():
     by = {i.symbol: i for i in plan.intents}
     assert "NVDA" not in by
     assert by["MSFT"].amount == Decimal("900")
+
+
+def test_buys_interleaved_round_robin_by_rank_across_buckets():
+    strat = _strategy(
+        [Bucket(id="a", target_pct="50"), Bucket(id="b", target_pct="50")]
+    )
+    rec = AllocationRecommendation(
+        buckets=[
+            BucketRecommendation(
+                bucket_id="a",
+                positions=[
+                    RecommendedPosition(symbol="A1", weight="2"),
+                    RecommendedPosition(symbol="A2", weight="1"),
+                ],
+            ),
+            BucketRecommendation(
+                bucket_id="b",
+                positions=[
+                    RecommendedPosition(symbol="B1", weight="2"),
+                    RecommendedPosition(symbol="B2", weight="1"),
+                ],
+            ),
+        ]
+    )
+    market = _market({"A1": "100", "A2": "100", "B1": "100", "B2": "100"})
+    plan, _ = allocate(strat, rec, RiskPolicy(), _portfolio(cash="1000"), market)
+    order = [i.symbol for i in plan.intents if i.side == "buy"]
+    assert order == ["A1", "B1", "A2", "B2"]
+
+
+def test_bucket_membership_maps_symbols_to_buckets():
+    from rh_wizard.allocation.engine import bucket_membership
+
+    strat = _strategy([Bucket(id="a", target_pct="100", universe=["HELD"])])
+    rec = AllocationRecommendation(
+        buckets=[
+            BucketRecommendation(bucket_id="a", positions=[RecommendedPosition(symbol="NVDA")])
+        ]
+    )
+    member = bucket_membership(strat, rec)
+    assert member["NVDA"] == "a"
+    assert member["HELD"] == "a"
