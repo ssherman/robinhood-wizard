@@ -77,8 +77,12 @@ def deployment_summary(
     notes = list(report.notes)
     for b in report.buckets:
         budget = (b.target_pct / 100 * investable) if investable > 0 else Decimal("0")
+        current = (b.current_pct / 100 * investable) if investable > 0 else Decimal("0")
         deployed = deployed_by_bucket.get(b.bucket_id, Decimal("0"))
-        cash_left = budget - deployed
+        deployable = budget - current  # what the allocator could buy (the shortfall)
+        if deployable < 0:  # overweight/trim bucket -> nothing to deploy
+            deployable = Decimal("0")
+        cash_left = deployable - deployed
         if cash_left < 0:
             cash_left = Decimal("0")
         new_buckets.append(

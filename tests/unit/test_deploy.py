@@ -153,3 +153,31 @@ def test_complete_allocation_is_deterministic():
     _, _, a = complete_allocation(strat, rec, _policy(), _portfolio("1000"), market)
     _, _, b = complete_allocation(strat, rec, _policy(), _portfolio("1000"), market)
     assert [(i.symbol, i.amount) for i in a.approved] == [(i.symbol, i.amount) for i in b.approved]
+
+
+def test_held_position_not_reported_as_cash_left():
+    # Bucket already holds $500 of GOOD; target $1000 -> $500 shortfall, fully bought.
+    # cash_left must reflect the UNFILLED shortfall ($0), not the held value.
+    from rh_wizard.models.portfolio import Position
+
+    strat = Strategy(id="s", name="S", buckets=[Bucket(id="ai", name="AI", target_pct="100")])
+    rec = _rec("ai", ("GOOD", "1"))
+    market = _ctx(_sym("GOOD", "100"))
+    held = [
+        Position(
+            symbol="GOOD", quantity="5", average_cost="100", cost_basis="500", market_value="500"
+        )
+    ]
+    portfolio = PortfolioState(
+        account_number="ACC1",
+        positions=held,
+        cash=Decimal("500"),
+        buying_power=Decimal("500"),
+        total_value=Decimal("1000"),
+    )
+    _, report, _ = complete_allocation(strat, rec, _policy(), portfolio, market)
+    b = report.buckets[0]
+    assert b.budget == Decimal("1000")
+    assert b.deployed == Decimal("500")  # only the $500 shortfall was bought
+    assert b.cash_left == Decimal("0")  # held $500 is NOT "left as cash"
+    assert report.notes == []

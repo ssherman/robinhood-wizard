@@ -99,6 +99,7 @@ def _split_buys(
 ) -> list[TradeIntent]:
     if rec is None or shortfall <= 0:
         return []
+    exclude = frozenset(_norm(s) for s in exclude)
     priced = [
         p
         for p in rec.positions
