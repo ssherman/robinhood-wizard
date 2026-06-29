@@ -13,6 +13,7 @@ from rh_wizard.cli.market import run_data
 from rh_wizard.cli.portfolio import run_history, run_positions
 from rh_wizard.cli.run import list_strategies, run_strategy
 from rh_wizard.logging.mcp_noise import silence_session_termination_warning
+from rh_wizard.logging.quiet import quiet_dependency_logs
 from rh_wizard.logging.redaction import install_redaction
 
 DISCLAIMER = (
@@ -93,6 +94,7 @@ def compile(
 
 def main() -> None:
     logging.basicConfig(level=logging.INFO)
+    quiet_dependency_logs()  # keep httpx/openai/mcp INFO spam from burying the --execute prompt
     install_redaction(logging.getLogger())
     silence_session_termination_warning()
     app()
