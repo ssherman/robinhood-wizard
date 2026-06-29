@@ -7,11 +7,14 @@ defensively and live-verified (spec §18).
 
 from __future__ import annotations
 
+import logging
 from decimal import Decimal
 from typing import Any
 
 from rh_wizard.models.order import OrderResult, ReviewResult
 from rh_wizard.models.plan import TradeIntent
+
+logger = logging.getLogger(__name__)
 
 
 def _order_params(intent: TradeIntent) -> tuple[str, dict]:
@@ -48,10 +51,34 @@ def _parse_alerts(raw: dict) -> list[str]:
     return []
 
 
-def _parse_order_id(raw: dict) -> str | None:
-    d = _unwrap(raw)
+def _order_id_from(d: dict) -> str | None:
     val = d.get("id") or d.get("order_id")
     return str(val) if val else None
+
+
+def _parse_order_id(raw: dict) -> str | None:
+    """Find the placed order's id across the envelopes the place tool may use.
+
+    The live order object carries the id at top-level ``id`` (spec §18). A place response may
+    return that object bare, under ``data``, under a single ``order`` key, or as the first item
+    of an ``orders``/``results`` list — check each. Returns None only when no id is present.
+    """
+    d = _unwrap(raw)
+    found = _order_id_from(d)
+    if found:
+        return found
+    inner = d.get("order")
+    if isinstance(inner, dict):
+        found = _order_id_from(inner)
+        if found:
+            return found
+    for key in ("orders", "results"):
+        items = d.get(key)
+        if isinstance(items, list) and items and isinstance(items[0], dict):
+            found = _order_id_from(items[0])
+            if found:
+                return found
+    return None
 
 
 class RobinhoodOrderExecutor:
@@ -90,6 +117,12 @@ class RobinhoodOrderExecutor:
             )
         order_id = _parse_order_id(raw)
         if order_id is None:
+            logger.warning(
+                "place_equity_order for %s returned no parseable order id — the order MAY have "
+                "placed; verify at the broker. Raw response: %r",
+                intent.symbol,
+                raw,
+            )
             return OrderResult(
                 symbol=intent.symbol,
                 side=intent.side,
