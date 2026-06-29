@@ -38,6 +38,8 @@ class CliApprovalGate:
                 f"  {i.side} {i.symbol}  qty={qty}  {kind}{limit}  "
                 f"amount={fmt_money(_intent_amount(i))}"
             )
-        print("Type 'yes' to place these orders (anything else cancels): ", end="")
+        # flush=True: readline() (unlike input()) does not flush stdout, so without this the
+        # buffered prompt appears AFTER the user's keystrokes — burying the real-money gate.
+        print("Type 'yes' to place these orders (anything else cancels): ", end="", flush=True)
         answer = self._stdin.readline().strip()
         return answer == "yes"

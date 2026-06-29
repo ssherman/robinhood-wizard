@@ -1,3 +1,4 @@
+import logging
 import os
 from decimal import Decimal
 
@@ -178,6 +179,41 @@ def test_place_missing_order_id_is_failed():
         TradeIntent(side="buy", symbol="AAPL", quantity="1", limit_price="100"), "ACC1", "r"
     )
     assert out.status == "failed"
+
+
+def test_parse_order_id_finds_id_under_common_envelopes():
+    from rh_wizard.execution.robinhood import _parse_order_id
+
+    # Bare order object (Robinhood's live order shape: top-level id) and the data wrapper.
+    assert _parse_order_id({"id": "A", "state": "filled"}) == "A"
+    assert _parse_order_id({"data": {"id": "B"}}) == "B"
+    # Single-order wrappers — the live place response nested the order, so the id was missed.
+    assert _parse_order_id({"order": {"id": "C"}}) == "C"
+    assert _parse_order_id({"data": {"order": {"id": "D"}}}) == "D"
+    # List wrappers — a place may echo the created order inside a list.
+    assert _parse_order_id({"orders": [{"id": "E"}]}) == "E"
+    assert _parse_order_id({"results": [{"order_id": "F"}]}) == "F"
+
+
+def test_parse_order_id_none_when_truly_absent():
+    from rh_wizard.execution.robinhood import _parse_order_id
+
+    assert _parse_order_id({"data": {"state": "confirmed"}}) is None
+    assert _parse_order_id({}) is None
+
+
+def test_place_logs_raw_response_when_no_order_id(caplog):
+    class NoIdBroker(FakeBroker):
+        def place_equity_order(self, *a, **k):
+            return {"unexpected": {"shape": "no id anywhere"}}
+
+    ex = RobinhoodOrderExecutor(NoIdBroker())
+    intent = TradeIntent(side="buy", symbol="AAPL", quantity="1", limit_price="100")
+    with caplog.at_level(logging.WARNING):
+        out = ex.place(intent, "ACC1", "r")
+    assert out.status == "failed"
+    assert "no parseable order id" in caplog.text
+    assert "unexpected" in caplog.text  # raw response logged for diagnosis
 
 
 @pytest.mark.skipif(
