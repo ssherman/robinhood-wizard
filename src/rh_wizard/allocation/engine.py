@@ -25,6 +25,7 @@ from rh_wizard.models.strategy import Strategy
 
 _BUY = "buy"
 _SELL = "sell"
+_CENTS = Decimal("0.01")  # money is whole cents; notionals round DOWN to stay within budget
 
 
 def _norm(symbol: str) -> str:
@@ -77,8 +78,11 @@ def _buy_intent(
         return None
     fractional = allow_fractional and bool(data.fractionable)
     if fractional:
+        amount = dollars.quantize(_CENTS, rounding=ROUND_DOWN)
+        if amount <= 0:
+            return None
         return TradeIntent(
-            side=_BUY, symbol=symbol, amount=dollars, limit_price=price, rationale=rationale
+            side=_BUY, symbol=symbol, amount=amount, limit_price=price, rationale=rationale
         )
     qty = (dollars / price).to_integral_value(rounding=ROUND_DOWN)
     if qty <= 0:

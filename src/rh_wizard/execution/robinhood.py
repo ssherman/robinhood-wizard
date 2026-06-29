@@ -8,7 +8,7 @@ defensively and live-verified (spec §18).
 from __future__ import annotations
 
 import logging
-from decimal import Decimal
+from decimal import ROUND_DOWN, Decimal
 from typing import Any
 
 from rh_wizard.models.order import OrderResult, ReviewResult
@@ -16,13 +16,25 @@ from rh_wizard.models.plan import TradeIntent
 
 logger = logging.getLogger(__name__)
 
+_CENTS = Decimal("0.01")
+_MAX_QTY_DP = Decimal("0.000001")  # 6 decimal places
+
+
+def _cap_dp(qty: Decimal) -> Decimal:
+    """Truncate a fractional quantity to 6dp only when over-precise (leave 1.5 as 1.5)."""
+    return qty.quantize(_MAX_QTY_DP, rounding=ROUND_DOWN) if qty.as_tuple().exponent < -6 else qty
+
 
 def _order_params(intent: TradeIntent) -> tuple[str, dict]:
-    """(order_type, sizing-params) for an intent. Fractional/notional → market; whole → limit."""
+    """(order_type, sizing-params) for an intent. Fractional/notional → market; whole → limit.
+
+    Money is sent as whole cents and fractional quantities are capped at 6dp (both ROUND_DOWN):
+    Robinhood rejects a dollar_based_amount/quantity with more than 16 digits in total.
+    """
     if intent.amount is not None:  # fractional buy: notional market order
-        return "market", {"dollar_amount": str(intent.amount)}
+        return "market", {"dollar_amount": str(intent.amount.quantize(_CENTS, rounding=ROUND_DOWN))}
     if intent.quantity is not None and intent.quantity != intent.quantity.to_integral_value():
-        return "market", {"quantity": str(intent.quantity)}  # fractional sell: market
+        return "market", {"quantity": str(_cap_dp(intent.quantity))}  # fractional sell: market
     if intent.quantity is not None and intent.limit_price is not None:
         return "limit", {"quantity": str(intent.quantity), "limit_price": str(intent.limit_price)}
     raise ValueError(f"cannot size order for {intent.symbol}: need amount, or quantity+limit_price")
