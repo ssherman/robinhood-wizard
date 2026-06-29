@@ -20,6 +20,15 @@ def _num(value: Decimal):
     return int(value) if value == value.to_integral_value() else str(value)
 
 
+def _oneline(text: str) -> str:
+    """Collapse whitespace/newlines so an LLM value stays on a single comment line.
+
+    An embedded newline would otherwise leave the continuation un-commented, turning it into a
+    stray YAML document that breaks the next ``yaml.safe_load``.
+    """
+    return " ".join(text.split())
+
+
 def _bucket_to_dict(bucket) -> dict:
     return {
         "id": bucket.id,
@@ -71,18 +80,22 @@ def _comment_header(result: CompileResult, prose: str) -> str:
             lines += ["#", f"# Bucket: {b.name} ({b.target_pct}% of investable)"]
             for t in b.tickers:
                 ticker_line = (
-                    f"#   {t.symbol} - {t.rationale}" if t.rationale else f"#   {t.symbol}"
+                    f"#   {t.symbol} - {_oneline(t.rationale)}"
+                    if t.rationale
+                    else f"#   {t.symbol}"
                 )
                 lines.append(ticker_line)
     elif result.tickers:
         lines += ["#", "# Suggested tickers:"]
         for t in result.tickers:
-            ticker_line = f"#   {t.symbol} - {t.rationale}" if t.rationale else f"#   {t.symbol}"
+            ticker_line = (
+                f"#   {t.symbol} - {_oneline(t.rationale)}" if t.rationale else f"#   {t.symbol}"
+            )
             lines.append(ticker_line)
     if result.sources:
         lines += ["#", "# Sources:"]
         for s in result.sources:
-            lines.append(f"#   - {s.title}  {s.url}" if s.title else f"#   - {s.url}")
+            lines.append(f"#   - {_oneline(s.title)}  {s.url}" if s.title else f"#   - {s.url}")
     lines.append("")
     return "\n".join(lines)
 

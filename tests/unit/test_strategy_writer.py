@@ -46,6 +46,33 @@ def test_written_yaml_has_review_header(tmp_path):
     assert "https://e/ai" in text  # source url
 
 
+def test_written_yaml_round_trips_with_multiline_title_and_rationale(tmp_path):
+    # An LLM source title / ticker rationale can arrive with embedded newlines. The comment
+    # header must keep each value on one '#' line, or a continuation line becomes a stray YAML
+    # document and the next load raises a ParserError (observed on a real compiled strategy).
+    strategy = Strategy(
+        id="ai",
+        name="AI",
+        intent="ai names",
+        universe=["MSFT"],
+        signals_needed={Signal.PRICE},
+        risk_overrides={},
+        web_research=True,
+    )
+    result = CompileResult(
+        strategy=strategy,
+        tickers=[SuggestedTicker(symbol="MSFT", rationale="cloud\nleader\ngrowth")],
+        sources=[Source(title="ANNUAL \nREPORT\n2026", url="https://e/sec")],
+    )
+    path = tmp_path / "ai.yaml"
+    write_strategy_yaml(path, result, "ai names")
+    loaded = StrategyRegistry(tmp_path).load("ai")  # must not raise on the multi-line values
+    assert loaded == result.strategy
+    text = path.read_text(encoding="utf-8")
+    assert "ANNUAL REPORT 2026" in text  # title flattened onto one comment line
+    assert "cloud leader growth" in text  # rationale flattened onto one comment line
+
+
 def test_written_yaml_round_trips_with_empty_tickers_and_sources(tmp_path):
     strategy = Strategy(
         id="empty",
