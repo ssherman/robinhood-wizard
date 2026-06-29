@@ -88,6 +88,28 @@ def test_non_fractionable_symbol_forces_whole_shares():
     assert plan.intents[0].amount is None
 
 
+def test_buy_notional_amount_is_quantized_to_cents():
+    # investable 1000 (reserve 0), single bucket 100%, 3 equal names -> 1000/3 = 333.333...
+    # The notional must be 2dp cents, not a 28-digit Decimal (Robinhood rejects >16 digits).
+    strat = _strategy([Bucket(id="ai", target_pct="100")])
+    rec = AllocationRecommendation(
+        buckets=[
+            BucketRecommendation(
+                bucket_id="ai",
+                positions=[
+                    RecommendedPosition(symbol="AAA"),
+                    RecommendedPosition(symbol="BBB"),
+                    RecommendedPosition(symbol="CCC"),
+                ],
+            )
+        ]
+    )
+    market = _market({"AAA": "100", "BBB": "100", "CCC": "100"})
+    policy = RiskPolicy(cash_reserve_pct=Decimal("0"))
+    plan, _ = allocate(strat, rec, policy, _portfolio(cash="1000"), market)
+    assert all(i.amount == Decimal("333.33") for i in plan.intents)
+
+
 def test_equal_weight_fallback_when_no_weights():
     strat = _strategy([Bucket(id="ai", target_pct="100")])
     rec = AllocationRecommendation(

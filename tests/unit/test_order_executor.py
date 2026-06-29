@@ -30,6 +30,23 @@ def test_order_params_fractional_sell_is_market_quantity():
     assert params == {"quantity": "1.5"}
 
 
+def test_order_params_quantizes_overprecise_notional_to_cents():
+    # Allocator notionals come from Decimal division (budget * w / Σw) and can carry ~28 digits;
+    # Robinhood rejects dollar_based_amount with >16 digits total. Send cents (2dp, ROUND_DOWN).
+    intent = TradeIntent(side="buy", symbol="ETN", amount="317.6142857142857142857142857")
+    order_type, params = _order_params(intent)
+    assert order_type == "market"
+    assert params == {"dollar_amount": "317.61"}
+
+
+def test_order_params_truncates_overprecise_fractional_quantity():
+    # A fractional sell quantity (dollars / price) can also exceed 16 digits; truncate to 6dp,
+    # but leave already-clean quantities (e.g. 1.5) untouched.
+    intent = TradeIntent(side="sell", symbol="NVDA", quantity="4.2379761234567", limit_price="100")
+    _, params = _order_params(intent)
+    assert params == {"quantity": "4.237976"}
+
+
 def test_order_params_whole_sell_is_limit():
     intent = TradeIntent(side="sell", symbol="NVDA", quantity="2", limit_price="100")
     order_type, params = _order_params(intent)
