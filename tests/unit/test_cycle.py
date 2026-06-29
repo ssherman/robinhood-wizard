@@ -1,4 +1,6 @@
 # tests/unit/test_cycle.py
+from decimal import Decimal
+
 from rh_wizard.config.settings import Settings
 from rh_wizard.core.cycle import CycleDeps, run_cycle
 from rh_wizard.data.resolver import SignalResolver
@@ -465,3 +467,48 @@ def test_human_approval_places_orders_from_bucketed_path():
         assert result.orders[0].status == "placed"
         assert ex.placed  # the executor was actually invoked from _run_bucketed
         assert journal.orders(result.run.run_id)[0]["status"] == "placed"
+
+
+def test_bucketed_cycle_reports_deployment_and_rationale():
+    from rh_wizard.models.allocation import (
+        AllocationRecommendation,
+        BucketRecommendation,
+        RecommendedPosition,
+    )
+    from rh_wizard.models.bucket import Bucket
+
+    strategy = Strategy(
+        id="b",
+        name="B",
+        signals_needed={Signal.PRICE},
+        risk_overrides={"max_position_pct": "100", "max_deploy_pct_per_cycle": "100"},
+        buckets=[Bucket(id="ai", target_pct="100", universe=["AAPL"])],
+    )
+
+    class Rec:
+        def recommend(self, strategy, bucket_candidates, market, portfolio):
+            return AllocationRecommendation(
+                buckets=[
+                    BucketRecommendation(
+                        bucket_id="ai",
+                        positions=[
+                            RecommendedPosition(symbol="AAPL", weight="1", thesis="cheap and good")
+                        ],
+                    )
+                ],
+                summary="ok",
+            )
+
+    with SqliteJournal(":memory:") as journal:
+        deps = _deps(journal)
+        deps.recommender = Rec()
+        with deps.broker:
+            result = run_cycle(strategy, deps)
+        assert result.run.status == "completed"
+        ai = result.allocation.buckets[0]
+        assert ai.budget == Decimal("9000")  # investable 10000*0.9, target 100%
+        assert ai.deployed == Decimal("9000")
+        assert ai.cash_left == Decimal("0")
+        assert any(
+            i.symbol == "AAPL" and i.rationale == "cheap and good" for i in result.vetted.approved
+        )

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from decimal import Decimal
+
 from rh_wizard.masking import mask_account
 
 
@@ -156,7 +158,12 @@ def render_cycle_result(result) -> str:
         table.add_column("Drift", justify="right")
         table.add_column("Band?", justify="center")
         table.add_column("Action")
+        table.add_column("Deployed", justify="right")
         for b in allocation.buckets:
+            pct = (b.deployed / b.budget * 100) if b.budget > 0 else Decimal("0")
+            deployed_cell = f"{fmt_money(b.deployed)} ({fmt_pct(pct)})"
+            if b.cash_left > 0:
+                deployed_cell += f"\n{fmt_money(b.cash_left)} left"
             table.add_row(
                 b.name or b.bucket_id,
                 fmt_pct(b.target_pct),
@@ -164,8 +171,11 @@ def render_cycle_result(result) -> str:
                 fmt_pct(b.drift_pct),
                 "yes" if b.within_band else "no",
                 b.action,
+                deployed_cell,
             )
         lines.append(render_to_str(table).rstrip("\n"))
+        for note in allocation.notes:
+            lines.append(f"Allocation note: {note}")
         if allocation.orphans:
             lines.append("Orphan holdings (untouched): " + ", ".join(allocation.orphans))
         rec = getattr(result, "recommendation", None)

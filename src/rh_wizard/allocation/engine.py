@@ -50,7 +50,9 @@ def _held_value(portfolio: PortfolioState) -> dict[str, Decimal]:
     return out
 
 
-def _membership(strategy: Strategy, recommendation: AllocationRecommendation) -> dict[str, str]:
+def bucket_membership(
+    strategy: Strategy, recommendation: AllocationRecommendation
+) -> dict[str, str]:
     """Map each candidate/recommended symbol to its bucket id (first match wins)."""
     rec_by_bucket = {r.bucket_id: r for r in recommendation.buckets}
     member: dict[str, str] = {}
@@ -64,18 +66,26 @@ def _membership(strategy: Strategy, recommendation: AllocationRecommendation) ->
 
 
 def _buy_intent(
-    symbol: str, dollars: Decimal, data: SymbolData, allow_fractional: bool
+    symbol: str,
+    dollars: Decimal,
+    data: SymbolData,
+    allow_fractional: bool,
+    rationale: str = "",
 ) -> TradeIntent | None:
     price = data.price
     if price is None or price <= 0 or dollars <= 0:
         return None
     fractional = allow_fractional and bool(data.fractionable)
     if fractional:
-        return TradeIntent(side=_BUY, symbol=symbol, amount=dollars, limit_price=price)
+        return TradeIntent(
+            side=_BUY, symbol=symbol, amount=dollars, limit_price=price, rationale=rationale
+        )
     qty = (dollars / price).to_integral_value(rounding=ROUND_DOWN)
     if qty <= 0:
         return None
-    return TradeIntent(side=_BUY, symbol=symbol, quantity=qty, limit_price=price)
+    return TradeIntent(
+        side=_BUY, symbol=symbol, quantity=qty, limit_price=price, rationale=rationale
+    )
 
 
 def _split_buys(
@@ -85,15 +95,18 @@ def _split_buys(
     allow_fractional: bool,
     member: dict[str, str],
     bucket_id: str,
+    exclude: frozenset[str],
 ) -> list[TradeIntent]:
     if rec is None or shortfall <= 0:
         return []
+    exclude = frozenset(_norm(s) for s in exclude)
     priced = [
         p
         for p in rec.positions
         if _norm(p.symbol) in market
         and market[_norm(p.symbol)].price
         and member.get(_norm(p.symbol)) == bucket_id
+        and _norm(p.symbol) not in exclude
     ]
     if not priced:
         return []
@@ -104,11 +117,13 @@ def _split_buys(
     if total <= 0:  # equal-weight fallback
         weights = [Decimal("1") for _ in priced]
         total = Decimal(len(priced))
+    # Rank by weight desc, then symbol asc, so allocate() can interleave buckets fairly by rank.
+    ranked = sorted(zip(priced, weights, strict=True), key=lambda pw: (-pw[1], _norm(pw[0].symbol)))
     intents: list[TradeIntent] = []
-    for pos, w in zip(priced, weights, strict=True):
+    for pos, w in ranked:
         sym = _norm(pos.symbol)
         dollars = shortfall * w / total
-        intent = _buy_intent(sym, dollars, market[sym], allow_fractional)
+        intent = _buy_intent(sym, dollars, market[sym], allow_fractional, rationale=pos.thesis)
         if intent is not None:
             intents.append(intent)
     return intents
@@ -142,8 +157,31 @@ def _trim_sells(
             qty = (dollars / data.price).to_integral_value(rounding=ROUND_DOWN)
         if qty <= 0:
             continue
-        intents.append(TradeIntent(side=_SELL, symbol=sym, quantity=qty, limit_price=data.price))
+        intents.append(
+            TradeIntent(
+                side=_SELL,
+                symbol=sym,
+                quantity=qty,
+                limit_price=data.price,
+                rationale="trim to bucket target",
+            )
+        )
     return intents
+
+
+def _interleave(bucket_buys: list[list[TradeIntent]]) -> list[TradeIntent]:
+    """Round-robin across buckets by rank so a binding cap is shared fairly, not consumed
+    bucket-by-bucket (which starves late buckets). Each inner list is one bucket's buys,
+    already ordered by rank (weight desc, symbol asc)."""
+    out: list[TradeIntent] = []
+    if not bucket_buys:
+        return out
+    depth = max(len(b) for b in bucket_buys)
+    for rank in range(depth):
+        for buys in bucket_buys:
+            if rank < len(buys):
+                out.append(buys[rank])
+    return out
 
 
 def allocate(
@@ -152,14 +190,15 @@ def allocate(
     policy: RiskPolicy,
     portfolio: PortfolioState,
     market: dict[str, SymbolData],
+    exclude: frozenset[str] = frozenset(),
 ) -> tuple[TradePlan, AllocationReport]:
     portfolio_value = _portfolio_value(portfolio)
     investable = portfolio_value * (1 - policy.cash_reserve_pct / 100)
     held_value = _held_value(portfolio)
-    member = _membership(strategy, recommendation)
+    member = bucket_membership(strategy, recommendation)
     rec_by_bucket = {r.bucket_id: r for r in recommendation.buckets}
 
-    buy_intents: list[TradeIntent] = []
+    bucket_buys: list[list[TradeIntent]] = []
     sell_intents: list[TradeIntent] = []
     report_buckets: list[BucketAllocation] = []
 
@@ -182,9 +221,10 @@ def allocate(
                 strategy.allow_fractional,
                 member,
                 bucket.id,
+                exclude,
             )
             if buys:
-                buy_intents.extend(buys)
+                bucket_buys.append(buys)
                 action = "buy"
             else:
                 action = "no candidates"
@@ -217,6 +257,7 @@ def allocate(
             )
         )
 
+    buy_intents = _interleave(bucket_buys)
     orphans = sorted(sym for sym in held_value if sym not in member)
     report = AllocationReport(buckets=report_buckets, orphans=orphans, investable=investable)
     return TradePlan(intents=sell_intents + buy_intents, rationale=recommendation.summary), report

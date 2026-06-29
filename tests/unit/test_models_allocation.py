@@ -53,3 +53,34 @@ def test_bucket_allocation_fields():
     )
     assert ba.action == "buy"
     assert ba.drift_pct == Decimal("-10")
+
+
+def test_bucket_allocation_has_deploy_fields():
+    b = BucketAllocation(
+        bucket_id="ai",
+        target_pct=Decimal("35"),
+        current_pct=Decimal("0"),
+        drift_pct=Decimal("-35"),
+        within_band=False,
+        action="buy",
+        budget=Decimal("1050"),
+        deployed=Decimal("900"),
+        cash_left=Decimal("150"),
+    )
+    assert b.budget == Decimal("1050")
+    assert b.deployed == Decimal("900")
+    assert b.cash_left == Decimal("150")
+
+
+def test_bucket_allocation_deploy_fields_default_zero():
+    b = BucketAllocation(
+        bucket_id="ai",
+        target_pct=Decimal("35"),
+        current_pct=Decimal("0"),
+        drift_pct=Decimal("-35"),
+        within_band=False,
+        action="buy",
+    )
+    assert b.budget == Decimal("0")
+    assert b.deployed == Decimal("0")
+    assert b.cash_left == Decimal("0")

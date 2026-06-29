@@ -13,8 +13,8 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
 from rh_wizard.allocation.base import BucketRecommender
-from rh_wizard.allocation.engine import allocate
 from rh_wizard.config.settings import Settings
+from rh_wizard.core.deploy import complete_allocation
 from rh_wizard.data.resolver import SignalResolver
 from rh_wizard.discovery.base import UniverseDiscoverer
 from rh_wizard.execution.base import ApprovalGate, OrderExecutor
@@ -251,8 +251,9 @@ def _run_bucketed(
         policy = build_effective_policy(
             deps.settings.risk, deps.settings.risk_ceiling, strategy.risk_overrides
         )
-        plan, allocation = allocate(strategy, recommendation, policy, portfolio, market.symbols)
-        vetted = vet(plan, policy, portfolio, market.to_symbol_risk())
+        plan, allocation, vetted = complete_allocation(
+            strategy, recommendation, policy, portfolio, market
+        )
     except Exception as exc:
         run = run.model_copy(
             update={

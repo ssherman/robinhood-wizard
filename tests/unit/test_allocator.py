@@ -366,3 +366,100 @@ def test_sells_are_ordered_before_buys():
     assert sides[0] == "sell"  # NVDA trim comes first
     assert "buy" in sides  # XOM buy after
     assert sides.index("sell") < sides.index("buy")
+
+
+def test_bucketed_buy_carries_position_thesis():
+    strat = _strategy([Bucket(id="ai", target_pct="100")])
+    rec = AllocationRecommendation(
+        buckets=[
+            BucketRecommendation(
+                bucket_id="ai",
+                positions=[RecommendedPosition(symbol="NVDA", weight="1", thesis="memory upcycle")],
+            )
+        ]
+    )
+    plan, _ = allocate(strat, rec, RiskPolicy(), _portfolio(cash="1000"), _market({"NVDA": "100"}))
+    assert plan.intents[0].rationale == "memory upcycle"
+
+
+def test_bucketed_trim_sell_carries_fixed_rationale():
+    held = [
+        Position(
+            symbol="NVDA", quantity="9", average_cost="100", cost_basis="900", market_value="900"
+        )
+    ]
+    strat = _strategy([Bucket(id="ai", target_pct="10")], rebalance_mode="full")
+    rec = AllocationRecommendation(
+        buckets=[
+            BucketRecommendation(bucket_id="ai", positions=[RecommendedPosition(symbol="NVDA")])
+        ]
+    )
+    plan, _ = allocate(
+        strat, rec, RiskPolicy(), _portfolio(cash="1000", positions=held), _market({"NVDA": "100"})
+    )
+    sells = [i for i in plan.intents if i.side == "sell"]
+    assert sells and all(i.rationale == "trim to bucket target" for i in sells)
+
+
+def test_exclude_drops_name_and_redistributes_to_survivors():
+    # investable 900, single bucket 100%. Without exclude: NVDA 600 / MSFT 300.
+    # Excluding NVDA hands its whole share to MSFT -> MSFT gets the full 900.
+    strat = _strategy([Bucket(id="ai", target_pct="100")])
+    rec = AllocationRecommendation(
+        buckets=[
+            BucketRecommendation(
+                bucket_id="ai",
+                positions=[
+                    RecommendedPosition(symbol="NVDA", weight="2"),
+                    RecommendedPosition(symbol="MSFT", weight="1"),
+                ],
+            )
+        ]
+    )
+    market = _market({"NVDA": "100", "MSFT": "200"})
+    plan, _ = allocate(
+        strat, rec, RiskPolicy(), _portfolio(cash="1000"), market, exclude=frozenset({"NVDA"})
+    )
+    by = {i.symbol: i for i in plan.intents}
+    assert "NVDA" not in by
+    assert by["MSFT"].amount == Decimal("900")
+
+
+def test_buys_interleaved_round_robin_by_rank_across_buckets():
+    strat = _strategy([Bucket(id="a", target_pct="50"), Bucket(id="b", target_pct="50")])
+    rec = AllocationRecommendation(
+        buckets=[
+            BucketRecommendation(
+                bucket_id="a",
+                positions=[
+                    RecommendedPosition(symbol="A1", weight="2"),
+                    RecommendedPosition(symbol="A2", weight="1"),
+                ],
+            ),
+            BucketRecommendation(
+                bucket_id="b",
+                positions=[
+                    RecommendedPosition(symbol="B1", weight="2"),
+                    RecommendedPosition(symbol="B2", weight="1"),
+                ],
+            ),
+        ]
+    )
+    market = _market({"A1": "100", "A2": "100", "B1": "100", "B2": "100"})
+    plan, _ = allocate(strat, rec, RiskPolicy(), _portfolio(cash="1000"), market)
+    order = [i.symbol for i in plan.intents if i.side == "buy"]
+    assert order == ["A1", "B1", "A2", "B2"]
+
+
+def test_bucket_membership_maps_symbols_to_buckets():
+    from rh_wizard.allocation.engine import bucket_membership
+
+    strat = _strategy([Bucket(id="a", target_pct="100", universe=["HELD"])])
+    rec = AllocationRecommendation(
+        buckets=[
+            BucketRecommendation(bucket_id="a", positions=[RecommendedPosition(symbol="NVDA")])
+        ]
+    )
+    member = bucket_membership(strat, rec)
+    assert member["NVDA"] == "a"
+    assert member["HELD"] == "a"
