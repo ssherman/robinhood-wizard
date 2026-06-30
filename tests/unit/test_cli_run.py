@@ -245,6 +245,60 @@ def test_run_without_execute_places_nothing(monkeypatch, tmp_path):
     assert built == []  # _build_executor is not even called without --execute
 
 
+def test_run_capital_and_ignore_holdings_render_research_banner(monkeypatch, tmp_path):
+    monkeypatch.setenv("RH_WIZARD_HOME", str(tmp_path))
+    _write_strategy(tmp_path)
+    monkeypatch.setattr(auth, "_build_broker", lambda settings: FakeBroker())
+    monkeypatch.setattr(run_module, "_build_llm", lambda settings: FakeStructuredLlm())
+    result = runner.invoke(app, ["run", "demo", "--capital", "5000", "--ignore-holdings"])
+    assert result.exit_code == 0, result.output
+    assert "RESEARCH MODE" in result.output
+    assert "$5,000.00" in result.output
+    assert "holdings ignored" in result.output
+
+
+def test_run_execute_with_capital_is_rejected(monkeypatch, tmp_path):
+    monkeypatch.setenv("RH_WIZARD_HOME", str(tmp_path))
+    _write_strategy(tmp_path)
+    monkeypatch.setattr(auth, "_build_broker", lambda settings: FakeBroker())
+    monkeypatch.setattr(run_module, "_build_llm", lambda settings: FakeStructuredLlm())
+    result = runner.invoke(app, ["run", "demo", "--capital", "5000", "--execute"])
+    assert result.exit_code != 0
+    assert "cannot be combined" in result.output
+
+
+def test_run_execute_with_ignore_holdings_is_rejected(monkeypatch, tmp_path):
+    monkeypatch.setenv("RH_WIZARD_HOME", str(tmp_path))
+    _write_strategy(tmp_path)
+    monkeypatch.setattr(auth, "_build_broker", lambda settings: FakeBroker())
+    monkeypatch.setattr(run_module, "_build_llm", lambda settings: FakeStructuredLlm())
+    result = runner.invoke(app, ["run", "demo", "--ignore-holdings", "--execute"])
+    assert result.exit_code != 0
+    assert "cannot be combined" in result.output
+
+
+def test_run_non_positive_capital_is_rejected(monkeypatch, tmp_path):
+    monkeypatch.setenv("RH_WIZARD_HOME", str(tmp_path))
+    _write_strategy(tmp_path)
+    monkeypatch.setattr(auth, "_build_broker", lambda settings: FakeBroker())
+    monkeypatch.setattr(run_module, "_build_llm", lambda settings: FakeStructuredLlm())
+    result = runner.invoke(app, ["run", "demo", "--capital", "0"])
+    assert result.exit_code != 0
+    assert "positive" in result.output
+
+
+def test_run_override_builds_no_executor(monkeypatch, tmp_path):
+    monkeypatch.setenv("RH_WIZARD_HOME", str(tmp_path))
+    _write_strategy(tmp_path)
+    built = []
+    monkeypatch.setattr(auth, "_build_broker", lambda settings: FakeBroker())
+    monkeypatch.setattr(run_module, "_build_llm", lambda settings: FakeStructuredLlm())
+    monkeypatch.setattr(run_module, "_build_executor", lambda broker: built.append(1))
+    result = runner.invoke(app, ["run", "demo", "--capital", "5000"])
+    assert result.exit_code == 0, result.output
+    assert built == []  # no executor constructed for a research run
+
+
 @pytest.mark.skipif(
     not (os.environ.get("RH_WIZARD_LIVE") and os.environ.get("OPENAI_API_KEY")),
     reason="live test: needs RH_WIZARD_LIVE=1 and OPENAI_API_KEY",

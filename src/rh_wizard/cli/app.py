@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from decimal import Decimal
 from pathlib import Path
 
 import typer
@@ -71,10 +72,24 @@ def run(
         help="Place REAL orders after a typed confirmation (HumanApproval). "
         "Default is DryRun (no orders).",
     ),
+    capital: float | None = typer.Option(  # noqa: B008
+        None,
+        "--capital",
+        help="Size to this dollar amount instead of your account's cash (research/what-if; "
+        "no orders).",
+    ),
+    ignore_holdings: bool = typer.Option(  # noqa: B008
+        False,
+        "--ignore-holdings",
+        help="Treat your account as having no positions — a clean slate (research/what-if; "
+        "no orders).",
+    ),
 ) -> None:
     """Run STRATEGY_ID. Default is DryRun — proposes a vetted plan and places NO orders.
-    With --execute: places REAL orders after a typed confirmation (HumanApproval)."""
-    run_strategy(strategy_id, execute=execute)
+    With --execute: places REAL orders after a typed confirmation (HumanApproval).
+    With --capital/--ignore-holdings: a read-only research/what-if run (never places orders)."""
+    cap = Decimal(str(capital)) if capital is not None else None
+    run_strategy(strategy_id, execute=execute, capital=cap, ignore_holdings=ignore_holdings)
 
 
 @app.command()
