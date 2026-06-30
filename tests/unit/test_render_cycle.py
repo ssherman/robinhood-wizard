@@ -207,3 +207,42 @@ def test_render_shows_execution_summary():
     assert "Execution" in out
     assert "AAPL" in out and "placed" in out and "ord-1" in out
     assert "MU" in out and "skipped" in out
+
+
+def test_render_shows_research_banner_when_override_active():
+    from rh_wizard.memory.portfolio import PortfolioOverride
+
+    result = CycleResult(
+        run=_run(),
+        portfolio=PortfolioState(
+            account_number="ACC1",
+            positions=[],
+            cash=Decimal("5000"),
+            buying_power=Decimal("5000"),
+            total_value=Decimal("5000"),
+        ),
+        vetted=VettedPlan(
+            approved=[TradeIntent(side="buy", symbol="AAPL", quantity="1", limit_price="190")]
+        ),
+        override=PortfolioOverride(capital=Decimal("5000"), ignore_holdings=True),
+    )
+    out = render_cycle_result(result)
+    assert "RESEARCH MODE" in out
+    assert "$5,000.00" in out  # capital clause
+    assert "holdings ignored" in out
+
+
+def test_render_has_no_banner_on_normal_run():
+    result = CycleResult(
+        run=_run(),
+        portfolio=PortfolioState(
+            account_number="ACC1",
+            positions=[],
+            cash=Decimal("10000"),
+            buying_power=Decimal("10000"),
+            total_value=Decimal("10000"),
+        ),
+        vetted=VettedPlan(approved=[]),
+    )
+    out = render_cycle_result(result)
+    assert "RESEARCH MODE" not in out
