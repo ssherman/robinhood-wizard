@@ -512,3 +512,46 @@ def test_bucketed_cycle_reports_deployment_and_rationale():
         assert any(
             i.symbol == "AAPL" and i.rationale == "cheap and good" for i in result.vetted.approved
         )
+
+
+def test_cycle_override_uses_synthetic_capital_and_ignores_holdings():
+    from rh_wizard.memory.portfolio import PortfolioOverride
+
+    strategy = Strategy(id="m", name="M", universe=["AAPL"], signals_needed={Signal.PRICE})
+
+    class HeldBroker(FakeBroker):
+        def get_equity_positions(self, account_number):
+            return [{"symbol": "MSFT", "quantity": "5", "average_cost": "90"}]
+
+    override = PortfolioOverride(capital=Decimal("500"), ignore_holdings=True)
+    with SqliteJournal(":memory:") as journal:
+        deps = _deps(journal, broker=HeldBroker())
+        with deps.broker:
+            result = run_cycle(strategy, deps, override=override)
+        assert result.run.status == "completed"
+        # synthetic capital replaced real cash; held MSFT was ignored
+        assert result.portfolio.cash == Decimal("500")
+        assert result.portfolio.positions == []
+        assert "MSFT" not in result.market.symbols  # holdings not unioned into universe
+        assert result.override is override  # carried for rendering
+        assert "research" in result.run.note  # journaled tag
+
+
+def test_cycle_override_never_executes_even_with_executor():
+    from rh_wizard.memory.portfolio import PortfolioOverride
+
+    strategy = Strategy(id="m", name="M", universe=["AAPL"], signals_needed={Signal.PRICE})
+    override = PortfolioOverride(capital=Decimal("10000"))
+    with SqliteJournal(":memory:") as journal:
+        deps = _deps(journal)
+        ex = _RecordingExecutor()
+        deps.executor = ex
+        deps.approval = _YesGate()
+        with deps.broker:
+            # even if a HUMAN_APPROVAL mode is requested, the cycle itself only executes when
+            # mode == HUMAN_APPROVAL; the CLI forces DryRun for overrides (Task 3). Here we assert
+            # the default DryRun path with an override never touches the executor.
+            result = run_cycle(strategy, deps, override=override)
+        assert result.orders == []
+        assert ex.placed == []
+        assert ex.reviewed == []
