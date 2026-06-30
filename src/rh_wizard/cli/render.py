@@ -128,6 +128,18 @@ def render_market_context(context) -> str:
     return body
 
 
+def _research_banner(override) -> str:
+    """Banner for a research/what-if run (override active). Empty string otherwise."""
+    if override is None or not getattr(override, "active", False):
+        return ""
+    clauses = []
+    if override.capital is not None:
+        clauses.append(f"capital={fmt_money(override.capital)}")
+    if override.ignore_holdings:
+        clauses.append("holdings ignored")
+    return "🔬 RESEARCH MODE — no orders placed · " + " · ".join(clauses)
+
+
 def render_cycle_result(result) -> str:
     """Render a CycleResult (run header + portfolio + research + data gaps + vetted plan)."""
     from rich.table import Table
@@ -138,6 +150,9 @@ def render_cycle_result(result) -> str:
         return f"{header}\nABORTED: {run.note}\n"
 
     lines = [header]
+    banner = _research_banner(getattr(result, "override", None))
+    if banner:
+        lines.insert(0, banner)
     if result.portfolio is not None:
         p = result.portfolio
         lines.append(f"Cash: {fmt_money(p.cash)}   Total value: {fmt_money(p.total_value)}")

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from decimal import Decimal
+
 import typer
 
 from rh_wizard.cli import auth
@@ -12,7 +14,7 @@ from rh_wizard.core.cycle import CycleDeps, run_cycle
 from rh_wizard.data.resolver import SignalResolver
 from rh_wizard.data.robinhood import RobinhoodDataSource
 from rh_wizard.memory.journal import SqliteJournal
-from rh_wizard.memory.portfolio import resolve_account_number
+from rh_wizard.memory.portfolio import PortfolioOverride, resolve_account_number
 from rh_wizard.models.cycle import CycleMode
 from rh_wizard.planning.llm import LlmPlanner
 from rh_wizard.research.llm import LlmResearcher
@@ -77,7 +79,12 @@ def list_strategies() -> None:
         typer.echo(sid)
 
 
-def run_strategy(strategy_id: str, execute: bool = False) -> None:
+def run_strategy(
+    strategy_id: str,
+    execute: bool = False,
+    capital: Decimal | None = None,
+    ignore_holdings: bool = False,
+) -> None:
     paths.ensure_home()
     settings = load_settings()
     registry = StrategyRegistry(paths.strategies_dir())
@@ -85,6 +92,16 @@ def run_strategy(strategy_id: str, execute: bool = False) -> None:
         strategy = registry.load(strategy_id)
     except StrategyNotFoundError as exc:
         raise typer.BadParameter(str(exc)) from exc
+
+    override = PortfolioOverride(capital=capital, ignore_holdings=ignore_holdings)
+    if execute and override.active:
+        raise typer.BadParameter(
+            "--execute cannot be combined with --capital/--ignore-holdings; "
+            "research/what-if runs never place orders."
+        )
+    if capital is not None and capital <= 0:
+        raise typer.BadParameter("--capital must be a positive dollar amount.")
+    do_execute = execute and not override.active
 
     broker = auth._build_broker(settings)
     with broker, SqliteJournal(paths.db_path()) as journal:
@@ -109,9 +126,9 @@ def run_strategy(strategy_id: str, execute: bool = False) -> None:
                 else None
             ),
             recommender=_build_recommender(settings) if strategy.buckets else None,
-            executor=_build_executor(broker) if execute else None,
-            approval=_build_approval() if execute else None,
+            executor=_build_executor(broker) if do_execute else None,
+            approval=_build_approval() if do_execute else None,
         )
-        mode = CycleMode.HUMAN_APPROVAL if execute else CycleMode.DRY_RUN
-        result = run_cycle(strategy, deps, mode)
+        mode = CycleMode.HUMAN_APPROVAL if do_execute else CycleMode.DRY_RUN
+        result = run_cycle(strategy, deps, mode, override=override if override.active else None)
     typer.echo(render_cycle_result(result))

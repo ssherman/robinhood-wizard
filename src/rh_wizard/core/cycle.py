@@ -19,7 +19,12 @@ from rh_wizard.data.resolver import SignalResolver
 from rh_wizard.discovery.base import UniverseDiscoverer
 from rh_wizard.execution.base import ApprovalGate, OrderExecutor
 from rh_wizard.memory.journal import SqliteJournal
-from rh_wizard.memory.portfolio import enrich_with_quotes, reconcile
+from rh_wizard.memory.portfolio import (
+    PortfolioOverride,
+    apply_override,
+    enrich_with_quotes,
+    reconcile,
+)
 from rh_wizard.models.allocation import AllocationRecommendation, AllocationReport
 from rh_wizard.models.bucket import Bucket
 from rh_wizard.models.cycle import CycleMode, CycleRun
@@ -63,6 +68,7 @@ class CycleResult:
     recommendation: AllocationRecommendation | None = None
     allocation: AllocationReport | None = None
     orders: list[OrderResult] = field(default_factory=list)
+    override: PortfolioOverride | None = None
 
 
 def _now() -> str:
@@ -137,9 +143,26 @@ def _bucket_candidates(
     return candidates, notes
 
 
+def _override_note(override: PortfolioOverride) -> str:
+    parts: list[str] = []
+    if override.capital is not None:
+        parts.append(f"capital={override.capital}")
+    if override.ignore_holdings:
+        parts.append("holdings ignored")
+    return "research: " + ", ".join(parts)
+
+
 def run_cycle(
-    strategy: Strategy, deps: CycleDeps, mode: CycleMode = CycleMode.DRY_RUN
+    strategy: Strategy,
+    deps: CycleDeps,
+    mode: CycleMode = CycleMode.DRY_RUN,
+    override: PortfolioOverride | None = None,
 ) -> CycleResult:
+    # A research/what-if override must never place orders, regardless of the requested mode
+    # or a future caller's executor (spec §6 — structural guard, not just a CLI convention).
+    if override is not None and override.active:
+        mode = CycleMode.DRY_RUN
+
     run = CycleRun(
         run_id=uuid.uuid4().hex,
         strategy_id=strategy.id,
@@ -147,18 +170,26 @@ def run_cycle(
         started_at=_now(),
     )
 
-    # Stage 3 (RECONCILE) — broker is ground truth; failure aborts (spec §13).
+    # Stage 3 (RECONCILE) — broker is ground truth; failure aborts (spec §13). A research
+    # override (spec §4-5) replaces account state between reconcile and enrich.
     try:
-        portfolio = enrich_with_quotes(reconcile(deps.broker, deps.settings), deps.broker)
+        portfolio = reconcile(deps.broker, deps.settings)
+        if override is not None and override.active:
+            portfolio = apply_override(portfolio, override)
+        portfolio = enrich_with_quotes(portfolio, deps.broker)
     except Exception as exc:
         run = run.model_copy(
             update={"status": "aborted", "finished_at": _now(), "note": f"reconcile failed: {exc}"}
         )
         deps.journal.record_run(run)
-        return CycleResult(run=run)
+        return CycleResult(run=run, override=override)
+    if override is not None and override.active:
+        run = run.model_copy(update={"note": _override_note(override)})
 
     if strategy.buckets:
-        return _run_bucketed(strategy, deps, run, portfolio)
+        result = _run_bucketed(strategy, deps, run, portfolio)
+        result.override = override
+        return result
 
     # Stage 4.5 (DISCOVER) — opt-in; degrade-and-report on failure (never abort).
     discovery: DiscoveryResult | None = None
@@ -199,7 +230,9 @@ def run_cycle(
             }
         )
         deps.journal.record_run(run)
-        return CycleResult(run=run, portfolio=portfolio, market=market, discovery=discovery)
+        return CycleResult(
+            run=run, portfolio=portfolio, market=market, discovery=discovery, override=override
+        )
 
     run = run.model_copy(update={"status": "completed", "finished_at": _now()})
     deps.journal.record_run(run)
@@ -220,6 +253,7 @@ def run_cycle(
         vetted=vetted,
         discovery=discovery,
         orders=orders,
+        override=override,
     )
 
 

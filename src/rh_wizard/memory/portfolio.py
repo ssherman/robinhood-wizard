@@ -6,6 +6,7 @@ storage for holdings.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 
 from rh_wizard.masking import mask_account
@@ -174,3 +175,27 @@ def enrich_with_quotes(state: PortfolioState, broker) -> PortfolioState:
             "total_return_pct": total_return_pct,
         }
     )
+
+
+@dataclass(frozen=True)
+class PortfolioOverride:
+    """Run-scoped synthetic override of account state (spec §4). ``capital`` replaces cash and
+    buying power; ``ignore_holdings`` clears positions. Either makes a run read-only (no orders)."""
+
+    capital: Decimal | None = None
+    ignore_holdings: bool = False
+
+    @property
+    def active(self) -> bool:
+        return self.capital is not None or self.ignore_holdings
+
+
+def apply_override(state: PortfolioState, override: PortfolioOverride) -> PortfolioState:
+    """Apply a PortfolioOverride to a freshly reconciled state (pure; spec §4)."""
+    if override.ignore_holdings:
+        state = state.model_copy(update={"positions": []})
+    if override.capital is not None:
+        state = state.model_copy(
+            update={"cash": override.capital, "buying_power": override.capital}
+        )
+    return state
