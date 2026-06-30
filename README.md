@@ -33,6 +33,10 @@ Actively developed. **What works today (Phases 0–5):**
 - **Order execution (Human-Approval mode)** — `wizard run <id> --execute` runs the full cycle
   and, after you type `yes` to confirm, places the approved orders on your agentic Robinhood
   account. The risk engine vets every order before any placement; a failure halts and reports.
+- **Research mode (what-if / for a friend)** — `wizard run <id> --capital 10000 --ignore-holdings`
+  runs the full cycle against a hypothetical balance and/or a clean slate (no holdings), without
+  reading your real positions or cash. Either flag makes the run read-only — it never places
+  orders. Use it to draft a plan for someone else, or to research a strategy at an arbitrary size.
 
 ## How it works
 
@@ -279,6 +283,34 @@ exists — anything other than the exact word `yes` cancels execution.
 > verified on first use. Before relying on review results in production, run the opt-in live
 > review test (or one real `--execute` with a 1–2 symbol, small plan and watch the review output)
 > during market hours to confirm alert parsing behaves as expected.
+
+### Research mode — run a what-if (or for a friend)
+
+Two composable flags let you run a strategy against a *hypothetical* account instead of your live
+one — to draft a plan for a friend, or research a strategy at an arbitrary size:
+
+- `--capital <amount>` — size to this dollar amount instead of your account's cash (overrides cash
+  and buying power; the risk policy's cash-reserve still applies, so a `$10,000` run deploys a bit
+  less and reports the reserve).
+- `--ignore-holdings` — treat your account as having **no positions** (a clean slate), so your
+  existing holdings don't bias the candidate universe, the rebalance math, or the LLM's context.
+
+```bash
+# A clean-slate $10,000 what-if:
+uv run --env-file .env wizard run sample-momentum --capital 10000 --ignore-holdings
+```
+
+Either flag makes the run **read-only**: it proposes and vets a plan but **never places orders** —
+`--execute` is refused in combination with them, and the cycle is forced to DryRun. The output is
+clearly marked:
+
+```
+🔬 RESEARCH MODE — no orders placed · capital=$10,000.00 · holdings ignored
+```
+
+You still need your Robinhood login — market data (quotes, fundamentals, tradability) comes from
+your authenticated connection. Only your *account state* (positions, cash, buying power) is
+overridden, in memory, for the run.
 
 ### Strategy file format
 
