@@ -548,10 +548,32 @@ def test_cycle_override_never_executes_even_with_executor():
         deps.executor = ex
         deps.approval = _YesGate()
         with deps.broker:
-            # even if a HUMAN_APPROVAL mode is requested, the cycle itself only executes when
-            # mode == HUMAN_APPROVAL; the CLI forces DryRun for overrides (Task 3). Here we assert
-            # the default DryRun path with an override never touches the executor.
-            result = run_cycle(strategy, deps, override=override)
+            # An active override coerces the run to DryRun even when HUMAN_APPROVAL is requested
+            # with an executor present — structural lockout (Fix A / spec §6), not just a CLI
+            # convention. Nothing is placed or reviewed regardless of mode.
+            result = run_cycle(strategy, deps, _human_approval(), override=override)
         assert result.orders == []
         assert ex.placed == []
         assert ex.reviewed == []
+
+
+def test_bucketed_cycle_override_carries_and_never_executes():
+    from rh_wizard.memory.portfolio import PortfolioOverride
+
+    strategy = _bucketed_strategy()
+    override = PortfolioOverride(capital=Decimal("5000"), ignore_holdings=True)
+    with SqliteJournal(":memory:") as journal:
+        deps = _deps(journal)
+        deps.recommender = _FakeRecommender()
+        ex = _RecordingExecutor()
+        deps.executor = ex
+        deps.approval = _YesGate()
+        with deps.broker:
+            # HUMAN_APPROVAL requested, but an active override forces DryRun -> nothing placed
+            result = run_cycle(strategy, deps, _human_approval(), override=override)
+        assert result.run.status == "completed"
+        assert result.override is override  # bucketed path carries the override
+        assert "research" in result.run.note  # journaled research tag
+        assert result.portfolio.cash == Decimal("5000")  # synthetic capital applied
+        assert result.orders == []  # structural lockout on the bucketed path
+        assert ex.placed == []

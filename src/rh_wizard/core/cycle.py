@@ -158,6 +158,11 @@ def run_cycle(
     mode: CycleMode = CycleMode.DRY_RUN,
     override: PortfolioOverride | None = None,
 ) -> CycleResult:
+    # A research/what-if override must never place orders, regardless of the requested mode
+    # or a future caller's executor (spec §6 — structural guard, not just a CLI convention).
+    if override is not None and override.active:
+        mode = CycleMode.DRY_RUN
+
     run = CycleRun(
         run_id=uuid.uuid4().hex,
         strategy_id=strategy.id,
